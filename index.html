@@ -700,6 +700,7 @@ function formatDate(d) {
   return new Date(d + 'T00:00:00').toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
 }
 
+
 // ─── Tree Rendering ───
 function renderTree() {
   const container = document.getElementById('treeRender');
@@ -716,91 +717,138 @@ function renderTree() {
 function buildGenerations() {
   const members = familyData.members;
   const rels = familyData.relationships;
-  const hasParent = new Set();
-  rels.filter(r => r.type === 'parent-child').forEach(r => hasParent.add(r.person2));
+  const parentChildRels = rels.filter(r => r.type === 'parent-child');
+  const spouseRels = rels.filter(r => r.type === 'spouse');
 
-  // Roots: no parents
+  // Build adjacency maps
+  const childrenOf = {};
+  const parentsOf = {};
+  const spousesOf = {};
+
+  parentChildRels.forEach(r => {
+    if (!childrenOf[r.person1]) childrenOf[r.person1] = [];
+    childrenOf[r.person1].push(r.person2);
+    if (!parentsOf[r.person2]) parentsOf[r.person2] = [];
+    parentsOf[r.person2].push(r.person1);
+  });
+
+  spouseRels.forEach(r => {
+    if (!spousesOf[r.person1]) spousesOf[r.person1] = [];
+    spousesOf[r.person1].push(r.person2);
+    if (!spousesOf[r.person2]) spousesOf[r.person2] = [];
+    spousesOf[r.person2].push(r.person1);
+  });
+
+  // Assign generation depth via BFS
+  // Key insight: spouses share depth, children are depth+1
+  const depth = {};
+  const hasParent = new Set(parentChildRels.map(r => r.person2));
+
+  // Seed with true roots (no parents defined)
   const roots = members.filter(m => !hasParent.has(m.id));
-  // Find unconnected (no relationships at all)
-  const connected = new Set();
-  rels.forEach(r => { connected.add(r.person1); connected.add(r.person2); });
-  const unconnected = members.filter(m => !connected.has(m.id));
+  const queue = [];
 
-  const rootsOnly = roots.filter(m => !unconnected.includes(m));
-  const couples = groupCouples(rootsOnly);
-  const generations = [];
-  let currentGen = couples;
+  roots.forEach(m => {
+    if (!(m.id in depth)) {
+      depth[m.id] = 0;
+      queue.push(m.id);
+    }
+  });
 
-  while (currentGen.length > 0) {
-    generations.push(currentGen);
-    const nextGen = [];
-    const seen = new Set();
-    currentGen.forEach(unit => {
-      const parentIds = unit.map(m => m.id);
-      const childIds = [];
-      rels.filter(r => r.type === 'parent-child' && parentIds.includes(r.person1)).forEach(r => {
-        if (!seen.has(r.person2)) { seen.add(r.person2); childIds.push(r.person2); }
-      });
-      if (childIds.length > 0) {
-        const children = childIds.map(cid => members.find(m => m.id === cid)).filter(Boolean);
-        const childCouples = groupCouples(children);
-        nextGen.push(...childCouples);
+  // BFS: spouses get same depth, children get depth+1
+  while (queue.length > 0) {
+    const current = queue.shift();
+    const d = depth[current];
+
+    // Spouses share the same generation
+    (spousesOf[current] || []).forEach(sid => {
+      if (!(sid in depth)) {
+        depth[sid] = d;
+        queue.push(sid);
       }
     });
-    currentGen = nextGen;
+
+    // Children are one generation below
+    (childrenOf[current] || []).forEach(cid => {
+      if (!(cid in depth)) {
+        depth[cid] = d + 1;
+        queue.push(cid);
+      }
+    });
   }
 
-  if (unconnected.length > 0) {
-    const uCouples = unconnected.map(m => [m]);
-    if (generations.length > 0) generations[generations.length - 1].push(...uCouples);
-    else generations.push(uCouples);
+  // Any unvisited members (totally disconnected) go to depth 0
+  members.forEach(m => {
+    if (!(m.id in depth)) depth[m.id] = 0;
+  });
+
+  // Normalize so min depth = 0
+  const minD = Math.min(...Object.values(depth));
+  members.forEach(m => { depth[m.id] -= minD; });
+  const maxD = Math.max(...members.map(m => depth[m.id]));
+
+  // Group by generation
+  const genArrays = [];
+  for (let d = 0; d <= maxD; d++) {
+    genArrays.push(members.filter(m => depth[m.id] === d));
   }
+
+  // Within each generation, pair up couples
+  const generations = [];
+  genArrays.forEach(genList => {
+    const units = [];
+    const used = new Set();
+
+    genList.forEach(m => {
+      if (used.has(m.id)) return;
+      used.add(m.id);
+
+      const spouseInGen = (spousesOf[m.id] || []).find(sid =>
+        !used.has(sid) && genList.some(x => x.id === sid)
+      );
+
+      if (spouseInGen) {
+        used.add(spouseInGen);
+        units.push([m, genList.find(x => x.id === spouseInGen)]);
+      } else {
+        units.push([m]);
+      }
+    });
+
+    if (units.length > 0) generations.push(units);
+  });
 
   return generations;
 }
 
-function groupCouples(membersList) {
-  const rels = familyData.relationships;
-  const used = new Set();
-  const couples = [];
-
-  membersList.forEach(m => {
-    if (used.has(m.id)) return;
-    used.add(m.id);
-    // Spouse in same list?
-    const spRel = rels.find(r => r.type === 'spouse' &&
-      ((r.person1 === m.id && membersList.some(x => x.id === r.person2 && !used.has(x.id))) ||
-       (r.person2 === m.id && membersList.some(x => x.id === r.person1 && !used.has(x.id)))));
-    if (spRel) {
-      const sid = spRel.person1 === m.id ? spRel.person2 : spRel.person1;
-      used.add(sid);
-      couples.push([m, membersList.find(x => x.id === sid)]);
-      return;
-    }
-    // Spouse outside list?
-    const spRel2 = rels.find(r => r.type === 'spouse' && (r.person1 === m.id || r.person2 === m.id));
-    if (spRel2) {
-      const sid = spRel2.person1 === m.id ? spRel2.person2 : spRel2.person1;
-      const spouse = familyData.members.find(x => x.id === sid);
-      if (spouse && !used.has(sid)) { used.add(sid); couples.push([m, spouse]); return; }
-    }
-    couples.push([m]);
-  });
-  return couples;
-}
-
 function renderGenerations(generations) {
   if (!generations.length) return '';
-  const labels = ['Grandparents', 'Parents', 'Children', 'Grandchildren', 'Great-Grandchildren'];
+  const n = generations.length;
+
+  // Generate labels dynamically for any number of generations
+  // Bottom row is always "Children", then going up: Parents, Grandparents, Great-Grandparents, etc.
+  function genLabel(index) {
+    if (n === 1) return '';
+    const fromBottom = n - 1 - index;
+    if (fromBottom === 0) return 'Children';
+    if (fromBottom === 1) return 'Parents';
+    if (fromBottom === 2) return 'Grandparents';
+    if (fromBottom >= 3) {
+      const greats = fromBottom - 2;
+      return 'Great-'.repeat(greats) + 'Grandparents';
+    }
+    return '';
+  }
+
   return generations.map((gen, gi) => {
-    const label = generations.length <= labels.length ? labels[labels.length - generations.length + gi] : `Generation ${gi + 1}`;
+    const label = genLabel(gi);
     const units = gen.map(unit => {
       if (unit.length === 2) {
         return `<div class="family-unit"><div class="couple-row">${memberCard(unit[0])}<span class="heart-connector">♥</span>${memberCard(unit[1])}</div></div>`;
       }
       return `<div class="family-unit">${memberCard(unit[0])}</div>`;
     }).join('');
-    return `<div class="gen-label">${label}</div><div class="generation-row">${units}</div>`;
+    return `${label ? `<div class="gen-label">${label}</div>` : ''}<div class="generation-row">${units}</div>`;
   }).join('');
 }
 
