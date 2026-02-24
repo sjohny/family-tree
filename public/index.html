@@ -1,0 +1,872 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Our Family Tree</title>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600;700&family=Lora:wght@400;500&family=Source+Sans+3:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #faf7f2;
+  --bg-warm: #f5f0e8;
+  --card: #ffffff;
+  --text: #3a3028;
+  --text-soft: #7a6f63;
+  --text-muted: #a89e93;
+  --accent: #8b7355;
+  --accent-light: #c4a882;
+  --accent-warm: #d4a574;
+  --border: #e6ddd1;
+  --border-light: #efe8de;
+  --gold: #c9a96e;
+  --shadow: rgba(60, 48, 30, 0.08);
+  --shadow-md: rgba(60, 48, 30, 0.12);
+  --line-color: #c4b8a8;
+  --male: #7a92a8;
+  --female: #b08a9a;
+  --radius: 12px;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  font-family: 'Source Sans 3', sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background:
+    radial-gradient(ellipse at 20% 20%, rgba(201, 169, 110, 0.06) 0%, transparent 50%),
+    radial-gradient(ellipse at 80% 80%, rgba(176, 138, 154, 0.05) 0%, transparent 50%),
+    radial-gradient(ellipse at 50% 50%, rgba(139, 115, 85, 0.03) 0%, transparent 70%);
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* ─── Header ─── */
+.app-header {
+  position: sticky; top: 0; z-index: 100;
+  background: rgba(250, 247, 242, 0.92);
+  backdrop-filter: blur(20px);
+  border-bottom: 1px solid var(--border-light);
+  padding: 0 2rem;
+}
+.header-inner {
+  max-width: 1400px; margin: 0 auto;
+  display: flex; align-items: center; justify-content: space-between; height: 64px;
+}
+.header-title {
+  font-family: 'Playfair Display', serif; font-size: 1.5rem; font-weight: 600;
+  color: var(--text); letter-spacing: 0.02em; cursor: pointer;
+}
+.header-title span { color: var(--accent-warm); }
+.header-actions { display: flex; gap: 0.5rem; align-items: center; }
+
+/* ─── Buttons ─── */
+.btn {
+  display: inline-flex; align-items: center; gap: 0.4rem;
+  padding: 0.5rem 1rem; border: 1px solid var(--border); border-radius: 8px;
+  background: var(--card); color: var(--text);
+  font-family: 'Source Sans 3', sans-serif; font-size: 0.85rem; font-weight: 500;
+  cursor: pointer; transition: all 0.2s; white-space: nowrap;
+}
+.btn:hover { border-color: var(--accent-light); box-shadow: 0 2px 8px var(--shadow); }
+.btn-primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+.btn-primary:hover { background: #7a6348; box-shadow: 0 4px 12px rgba(139,115,85,0.3); }
+.btn-danger { color: #c0392b; border-color: #e8c4c0; }
+.btn-danger:hover { background: #fdf0ef; border-color: #c0392b; }
+.btn-sm { padding: 0.35rem 0.75rem; font-size: 0.8rem; }
+.btn-icon {
+  width: 36px; height: 36px; padding: 0;
+  display: inline-flex; align-items: center; justify-content: center; border-radius: 8px;
+}
+
+/* ─── Tree Container ─── */
+.tree-container {
+  position: relative; z-index: 1; min-height: calc(100vh - 64px);
+  overflow: auto; padding: 2rem;
+}
+.tree-title-section { text-align: center; margin-bottom: 2rem; padding: 2rem 0 1rem; }
+.tree-title-section h1 {
+  font-family: 'Playfair Display', serif; font-size: 2.4rem; font-weight: 600;
+  color: var(--text); margin-bottom: 0.25rem;
+}
+.tree-title-section .subtitle {
+  font-family: 'Lora', serif; font-size: 0.95rem; color: var(--text-muted); font-style: italic;
+}
+
+/* ─── Generation Rows ─── */
+.gen-label {
+  font-family: 'Lora', serif; font-size: 0.7rem; text-transform: uppercase;
+  letter-spacing: 0.1em; color: var(--text-muted); margin-bottom: 0.5rem; text-align: center;
+}
+.generation-row {
+  display: flex; justify-content: center; gap: 3rem; margin-bottom: 1rem;
+  flex-wrap: wrap; padding: 1rem 0;
+}
+.family-unit { display: flex; flex-direction: column; align-items: center; gap: 0.5rem; }
+.couple-row { display: flex; align-items: center; gap: 0.5rem; }
+.heart-connector { color: var(--accent-warm); font-size: 0.8rem; opacity: 0.6; }
+
+/* ─── Connection Lines ─── */
+.connector-down {
+  width: 1.5px; height: 28px; background: var(--line-color); margin: 0 auto;
+}
+.connector-horizontal {
+  height: 1.5px; background: var(--line-color); margin: 0 auto;
+}
+.children-group {
+  display: flex; gap: 2rem; justify-content: center; position: relative; padding-top: 0.25rem;
+}
+.children-group::before {
+  content: ''; position: absolute; top: -14px; left: 50%;
+  height: 14px; width: 1.5px; background: var(--line-color);
+}
+.children-group.multi::after {
+  content: ''; position: absolute; top: 0; height: 1.5px; background: var(--line-color);
+}
+.child-branch { position: relative; display: flex; flex-direction: column; align-items: center; }
+.child-branch::before {
+  content: ''; position: absolute; top: -14px; left: 50%;
+  height: 14px; width: 1.5px; background: var(--line-color);
+}
+
+/* ─── Member Card ─── */
+.member-card {
+  display: flex; flex-direction: column; align-items: center; gap: 0.4rem;
+  cursor: pointer; transition: transform 0.2s; width: 110px;
+  animation: fadeInUp 0.4s ease both;
+}
+.member-card:hover { transform: translateY(-3px); }
+.member-photo {
+  width: 80px; height: 80px; border-radius: 50%;
+  border: 3px solid var(--border); overflow: hidden; background: var(--bg-warm);
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 3px 12px var(--shadow); transition: all 0.3s;
+}
+.member-card:hover .member-photo {
+  border-color: var(--accent-light); box-shadow: 0 6px 20px var(--shadow-md);
+}
+.member-photo img { width: 100%; height: 100%; object-fit: cover; }
+.member-photo .initials {
+  font-family: 'Playfair Display', serif; font-size: 1.4rem; font-weight: 500; color: var(--text-muted);
+}
+.member-photo.male { border-color: var(--male); }
+.member-photo.female { border-color: var(--female); }
+.member-name {
+  font-family: 'Lora', serif; font-size: 0.82rem; font-weight: 500;
+  color: var(--text); text-align: center; line-height: 1.2;
+}
+.member-dates { font-size: 0.7rem; color: var(--text-muted); text-align: center; }
+.member-maiden { font-size: 0.7rem; color: var(--text-soft); font-style: italic; text-align: center; }
+
+/* ─── Empty State ─── */
+.empty-state { text-align: center; padding: 4rem 2rem; max-width: 500px; margin: 0 auto; }
+.empty-state .tree-icon { font-size: 4rem; margin-bottom: 1.5rem; opacity: 0.5; }
+.empty-state h2 {
+  font-family: 'Playfair Display', serif; font-size: 1.6rem; font-weight: 500;
+  margin-bottom: 0.75rem;
+}
+.empty-state p { color: var(--text-soft); font-size: 0.95rem; margin-bottom: 1.5rem; line-height: 1.6; }
+
+/* ─── Modal ─── */
+.modal-overlay {
+  position: fixed; inset: 0; background: rgba(58, 48, 40, 0.4); backdrop-filter: blur(4px);
+  z-index: 1000; display: flex; align-items: center; justify-content: center; padding: 1rem;
+  opacity: 0; visibility: hidden; transition: all 0.3s;
+}
+.modal-overlay.active { opacity: 1; visibility: visible; }
+.modal {
+  background: var(--card); border-radius: 16px;
+  box-shadow: 0 20px 60px rgba(58, 48, 40, 0.25);
+  width: 100%; max-width: 520px; max-height: 90vh; overflow-y: auto;
+  transform: translateY(20px); transition: transform 0.3s;
+}
+.modal-overlay.active .modal { transform: translateY(0); }
+.modal-header {
+  padding: 1.5rem 1.5rem 0; display: flex; align-items: center; justify-content: space-between;
+}
+.modal-header h2 { font-family: 'Playfair Display', serif; font-size: 1.3rem; font-weight: 600; }
+.modal-body { padding: 1.25rem 1.5rem 1.5rem; }
+.modal-footer { padding: 0 1.5rem 1.5rem; display: flex; gap: 0.5rem; justify-content: flex-end; }
+
+/* ─── Form ─── */
+.form-row { display: flex; gap: 0.75rem; margin-bottom: 0.75rem; }
+.form-group { flex: 1; margin-bottom: 0.75rem; }
+.form-row .form-group { margin-bottom: 0; }
+.form-group label {
+  display: block; font-size: 0.78rem; font-weight: 500; color: var(--text-soft);
+  margin-bottom: 0.3rem; text-transform: uppercase; letter-spacing: 0.05em;
+}
+.form-group input, .form-group select, .form-group textarea {
+  width: 100%; padding: 0.6rem 0.8rem; border: 1px solid var(--border); border-radius: 8px;
+  font-family: 'Source Sans 3', sans-serif; font-size: 0.9rem; color: var(--text);
+  background: var(--bg); transition: border-color 0.2s;
+}
+.form-group input:focus, .form-group select:focus, .form-group textarea:focus {
+  outline: none; border-color: var(--accent-light); box-shadow: 0 0 0 3px rgba(196,168,130,0.15);
+}
+.form-group textarea { resize: vertical; min-height: 60px; }
+.form-group .help-text { font-size: 0.72rem; color: var(--text-muted); margin-top: 0.25rem; }
+.photo-preview-row { display: flex; gap: 0.75rem; align-items: flex-end; }
+.photo-preview-row .form-group { flex: 1; }
+.photo-preview {
+  width: 56px; height: 56px; border-radius: 50%; border: 2px solid var(--border);
+  overflow: hidden; background: var(--bg-warm); flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+}
+.photo-preview img { width: 100%; height: 100%; object-fit: cover; }
+.photo-preview .preview-placeholder { font-size: 0.65rem; color: var(--text-muted); text-align: center; }
+
+/* ─── Detail Panel ─── */
+.detail-panel {
+  position: fixed; right: -420px; top: 64px; width: 400px; height: calc(100vh - 64px);
+  background: var(--card); border-left: 1px solid var(--border);
+  box-shadow: -4px 0 20px var(--shadow); z-index: 200;
+  transition: right 0.35s cubic-bezier(0.4, 0, 0.2, 1); overflow-y: auto; padding: 1.5rem;
+}
+.detail-panel.open { right: 0; }
+.detail-panel-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 1.5rem; }
+.detail-photo {
+  width: 100px; height: 100px; border-radius: 50%; border: 3px solid var(--border);
+  overflow: hidden; background: var(--bg-warm); margin: 0 auto 1rem;
+  display: flex; align-items: center; justify-content: center;
+}
+.detail-photo img { width: 100%; height: 100%; object-fit: cover; }
+.detail-photo .initials { font-family: 'Playfair Display', serif; font-size: 2rem; color: var(--text-muted); }
+.detail-name { font-family: 'Playfair Display', serif; font-size: 1.4rem; text-align: center; margin-bottom: 0.25rem; }
+.detail-maiden { text-align: center; font-style: italic; color: var(--text-soft); font-size: 0.9rem; margin-bottom: 0.5rem; }
+.detail-dates { text-align: center; color: var(--text-muted); font-size: 0.85rem; margin-bottom: 1rem; }
+.detail-bio {
+  color: var(--text-soft); font-size: 0.9rem; line-height: 1.6;
+  padding: 1rem; background: var(--bg); border-radius: 8px; margin-bottom: 1rem;
+}
+.detail-relations { margin-top: 1rem; }
+.detail-relations h4 {
+  font-family: 'Lora', serif; font-size: 0.85rem; font-weight: 500;
+  color: var(--text-soft); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.5rem;
+}
+.detail-rel-item {
+  display: flex; align-items: center; gap: 0.5rem; padding: 0.5rem 0; cursor: pointer;
+}
+.detail-rel-item:hover { color: var(--accent); }
+.detail-rel-item .mini-photo {
+  width: 32px; height: 32px; border-radius: 50%; border: 2px solid var(--border);
+  overflow: hidden; background: var(--bg-warm); display: flex; align-items: center;
+  justify-content: center; flex-shrink: 0;
+}
+.detail-rel-item .mini-photo img { width: 100%; height: 100%; object-fit: cover; }
+.detail-rel-item .mini-photo .initials { font-size: 0.6rem; color: var(--text-muted); }
+.detail-actions {
+  display: flex; gap: 0.5rem; margin-top: 1.5rem; padding-top: 1rem; border-top: 1px solid var(--border-light);
+}
+
+/* ─── Dropdown ─── */
+.dropdown { position: relative; }
+.dropdown-menu {
+  position: absolute; top: 100%; right: 0; margin-top: 4px;
+  background: var(--card); border: 1px solid var(--border); border-radius: 10px;
+  box-shadow: 0 8px 24px var(--shadow-md); min-width: 180px; z-index: 300;
+  overflow: hidden; display: none;
+}
+.dropdown-menu.show { display: block; }
+.dropdown-menu button {
+  display: flex; align-items: center; gap: 0.5rem; width: 100%;
+  padding: 0.65rem 1rem; border: none; background: none;
+  font-family: 'Source Sans 3', sans-serif; font-size: 0.85rem;
+  color: var(--text); cursor: pointer; text-align: left;
+}
+.dropdown-menu button:hover { background: var(--bg-warm); }
+.dropdown-menu hr { border: none; border-top: 1px solid var(--border-light); margin: 0; }
+
+/* ─── Toast ─── */
+.toast {
+  position: fixed; bottom: 2rem; left: 50%; transform: translateX(-50%) translateY(80px);
+  background: var(--text); color: #fff; padding: 0.75rem 1.25rem; border-radius: 10px;
+  font-size: 0.85rem; z-index: 2000; transition: transform 0.3s;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.2);
+}
+.toast.show { transform: translateX(-50%) translateY(0); }
+
+@keyframes fadeInUp { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: translateY(0); } }
+
+@media (max-width: 768px) {
+  .header-title { font-size: 1.2rem; }
+  .tree-title-section h1 { font-size: 1.8rem; }
+  .detail-panel { width: 100%; right: -100%; }
+  .member-card { width: 90px; }
+  .member-photo { width: 64px; height: 64px; }
+  .member-name { font-size: 0.75rem; }
+  .generation-row { gap: 1rem; }
+}
+
+::-webkit-scrollbar { width: 8px; }
+::-webkit-scrollbar-track { background: var(--bg); }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: var(--accent-light); }
+</style>
+</head>
+<body>
+
+<header class="app-header">
+  <div class="header-inner">
+    <div class="header-title" onclick="closeDetailPanel()">Family<span>Tree</span></div>
+    <div class="header-actions">
+      <button class="btn btn-primary" onclick="openAddMember()">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        Add Person
+      </button>
+      <button class="btn" onclick="openRelationshipModal()">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4-4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>
+        Add Relation
+      </button>
+      <div class="dropdown">
+        <button class="btn btn-icon" onclick="toggleMenu()" id="menuBtn">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="1"/><circle cx="12" cy="5" r="1"/><circle cx="12" cy="19" r="1"/></svg>
+        </button>
+        <div class="dropdown-menu" id="dropdownMenu">
+          <button onclick="openSettings()">⚙️ Settings</button>
+          <button onclick="exportData()">📁 Export Data</button>
+          <button onclick="document.getElementById('importInput').click()">📥 Import Data</button>
+          <hr>
+          <button onclick="loadSampleData()">🌳 Load Sample Tree</button>
+        </div>
+      </div>
+      <input type="file" id="importInput" accept=".json" style="display:none" onchange="importData(event)">
+    </div>
+  </div>
+</header>
+
+<div class="tree-container" id="treeContainer">
+  <div class="tree-title-section">
+    <h1 id="treeTitle">Our Family Tree</h1>
+    <div class="subtitle" id="treeSubtitle">Click "Add Person" to start building your family tree</div>
+  </div>
+  <div class="tree-render" id="treeRender"></div>
+</div>
+
+<div class="detail-panel" id="detailPanel">
+  <div class="detail-panel-header">
+    <div></div>
+    <button class="btn btn-icon btn-sm" onclick="closeDetailPanel()">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+    </button>
+  </div>
+  <div id="detailContent"></div>
+</div>
+
+<!-- Add/Edit Member Modal -->
+<div class="modal-overlay" id="memberModal">
+  <div class="modal">
+    <div class="modal-header">
+      <h2 id="memberModalTitle">Add Family Member</h2>
+      <button class="btn btn-icon btn-sm" onclick="closeMemberModal()">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="memberId">
+      <div class="form-row">
+        <div class="form-group"><label>First Name</label><input type="text" id="firstName" placeholder="e.g. John"></div>
+        <div class="form-group"><label>Last Name</label><input type="text" id="lastName" placeholder="e.g. Smith"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Maiden Name</label><input type="text" id="maidenName" placeholder="Optional"></div>
+        <div class="form-group"><label>Gender</label>
+          <select id="gender"><option value="male">Male</option><option value="female">Female</option><option value="unknown">Other / Unknown</option></select>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Birth Date</label><input type="date" id="birthDate"></div>
+        <div class="form-group"><label>Death Date</label><input type="date" id="deathDate"></div>
+      </div>
+      <div class="photo-preview-row">
+        <div class="form-group">
+          <label>Photo URL</label>
+          <input type="url" id="photoUrl" placeholder="https://immich.example.com/... or pCloud URL" oninput="updatePhotoPreview()">
+          <div class="help-text">Supports Immich shared links, pCloud public links, or any direct image URL</div>
+        </div>
+        <div class="photo-preview" id="photoPreview"><span class="preview-placeholder">No photo</span></div>
+      </div>
+      <div class="form-group"><label>Bio / Notes</label><textarea id="bio" placeholder="A short biography or notes..."></textarea></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" onclick="closeMemberModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="saveMember()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- Add Relationship Modal -->
+<div class="modal-overlay" id="relModal">
+  <div class="modal">
+    <div class="modal-header">
+      <h2>Add Relationship</h2>
+      <button class="btn btn-icon btn-sm" onclick="closeRelModal()">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group"><label>Relationship Type</label>
+        <select id="relType" onchange="updateRelLabels()">
+          <option value="parent-child">Parent → Child</option>
+          <option value="spouse">Spouse / Partner</option>
+        </select>
+      </div>
+      <div class="form-group"><label id="relPerson1Label">Parent</label><select id="relPerson1"></select></div>
+      <div class="form-group"><label id="relPerson2Label">Child</label><select id="relPerson2"></select></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" onclick="closeRelModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="saveRelationship()">Add Relationship</button>
+    </div>
+  </div>
+</div>
+
+<!-- Settings Modal -->
+<div class="modal-overlay" id="settingsModal">
+  <div class="modal">
+    <div class="modal-header">
+      <h2>Settings</h2>
+      <button class="btn btn-icon btn-sm" onclick="closeSettings()">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group"><label>Tree Title</label><input type="text" id="settingsTitle" placeholder="Our Family Tree"></div>
+      <div class="form-group"><label>Subtitle</label><input type="text" id="settingsSubtitle" placeholder="A lovely description..."></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" onclick="closeSettings()">Cancel</button>
+      <button class="btn btn-primary" onclick="saveSettings()">Save</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+let familyData = { members: [], relationships: [], settings: { title: 'Our Family Tree', subtitle: '' } };
+let selectedMemberId = null;
+
+// ─── API ───
+async function api(method, path, body) {
+  const opts = { method, headers: { 'Content-Type': 'application/json' } };
+  if (body) opts.body = JSON.stringify(body);
+  const res = await fetch('/api' + path, opts);
+  return res.json();
+}
+
+async function loadFamily() {
+  familyData = await api('GET', '/family');
+  if (!familyData.settings) familyData.settings = { title: 'Our Family Tree', subtitle: '' };
+  renderTree();
+  updateTitle();
+}
+
+function updateTitle() {
+  document.getElementById('treeTitle').textContent = familyData.settings.title || 'Our Family Tree';
+  document.getElementById('treeSubtitle').textContent = familyData.settings.subtitle ||
+    (familyData.members.length === 0 ? 'Click "Add Person" to start building your family tree' : '');
+  document.title = familyData.settings.title || 'Our Family Tree';
+}
+
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2500);
+}
+
+function toggleMenu() { document.getElementById('dropdownMenu').classList.toggle('show'); }
+document.addEventListener('click', (e) => {
+  if (!e.target.closest('.dropdown')) document.getElementById('dropdownMenu').classList.remove('show');
+});
+
+// ─── Photo URL Resolution ───
+function resolvePhotoUrl(url) {
+  if (!url) return '';
+  return url;
+}
+
+function updatePhotoPreview() {
+  const url = document.getElementById('photoUrl').value.trim();
+  const preview = document.getElementById('photoPreview');
+  if (url) {
+    preview.innerHTML = `<img src="${resolvePhotoUrl(url)}" onerror="this.parentElement.innerHTML='<span class=\\'preview-placeholder\\'>Error</span>'">`;
+  } else {
+    preview.innerHTML = '<span class="preview-placeholder">No photo</span>';
+  }
+}
+
+// ─── Member CRUD ───
+function openAddMember() {
+  document.getElementById('memberModalTitle').textContent = 'Add Family Member';
+  ['memberId','firstName','lastName','maidenName','birthDate','deathDate','photoUrl','bio'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('gender').value = 'male';
+  updatePhotoPreview();
+  document.getElementById('memberModal').classList.add('active');
+  setTimeout(() => document.getElementById('firstName').focus(), 100);
+}
+
+function openEditMember(id) {
+  const m = familyData.members.find(x => x.id === id);
+  if (!m) return;
+  document.getElementById('memberModalTitle').textContent = 'Edit ' + m.firstName;
+  document.getElementById('memberId').value = m.id;
+  document.getElementById('firstName').value = m.firstName || '';
+  document.getElementById('lastName').value = m.lastName || '';
+  document.getElementById('maidenName').value = m.maidenName || '';
+  document.getElementById('gender').value = m.gender || 'unknown';
+  document.getElementById('birthDate').value = m.birthDate || '';
+  document.getElementById('deathDate').value = m.deathDate || '';
+  document.getElementById('photoUrl').value = m.photoUrl || '';
+  document.getElementById('bio').value = m.bio || '';
+  updatePhotoPreview();
+  document.getElementById('memberModal').classList.add('active');
+}
+
+function closeMemberModal() { document.getElementById('memberModal').classList.remove('active'); }
+
+async function saveMember() {
+  const id = document.getElementById('memberId').value;
+  const data = {
+    firstName: document.getElementById('firstName').value.trim(),
+    lastName: document.getElementById('lastName').value.trim(),
+    maidenName: document.getElementById('maidenName').value.trim(),
+    gender: document.getElementById('gender').value,
+    birthDate: document.getElementById('birthDate').value,
+    deathDate: document.getElementById('deathDate').value,
+    photoUrl: document.getElementById('photoUrl').value.trim(),
+    bio: document.getElementById('bio').value.trim()
+  };
+  if (!data.firstName) { showToast('First name is required'); return; }
+  if (id) {
+    await api('PUT', '/members/' + id, data);
+    showToast(data.firstName + ' updated');
+  } else {
+    await api('POST', '/members', data);
+    showToast(data.firstName + ' added to the tree');
+  }
+  closeMemberModal();
+  await loadFamily();
+  if (id && selectedMemberId === id) showDetail(id);
+}
+
+async function deleteMember(id) {
+  const m = familyData.members.find(x => x.id === id);
+  if (!m || !confirm(`Remove ${m.firstName} ${m.lastName}? This removes all their relationships too.`)) return;
+  await api('DELETE', '/members/' + id);
+  closeDetailPanel(); showToast(m.firstName + ' removed'); await loadFamily();
+}
+
+// ─── Relationship CRUD ───
+function openRelationshipModal() {
+  if (familyData.members.length < 2) { showToast('Add at least 2 people first'); return; }
+  const opts = familyData.members.map(m => `<option value="${m.id}">${m.firstName} ${m.lastName}</option>`).join('');
+  document.getElementById('relPerson1').innerHTML = opts;
+  document.getElementById('relPerson2').innerHTML = opts;
+  if (familyData.members.length > 1) document.getElementById('relPerson2').selectedIndex = 1;
+  updateRelLabels();
+  document.getElementById('relModal').classList.add('active');
+}
+
+function updateRelLabels() {
+  const t = document.getElementById('relType').value;
+  document.getElementById('relPerson1Label').textContent = t === 'parent-child' ? 'Parent' : 'Person 1';
+  document.getElementById('relPerson2Label').textContent = t === 'parent-child' ? 'Child' : 'Person 2';
+}
+
+function closeRelModal() { document.getElementById('relModal').classList.remove('active'); }
+
+async function saveRelationship() {
+  const p1 = document.getElementById('relPerson1').value, p2 = document.getElementById('relPerson2').value;
+  if (p1 === p2) { showToast('Select two different people'); return; }
+  const res = await api('POST', '/relationships', { type: document.getElementById('relType').value, person1: p1, person2: p2 });
+  if (res.error) { showToast(res.error); return; }
+  closeRelModal(); showToast('Relationship added'); await loadFamily();
+}
+
+async function deleteRelationship(relId) {
+  await api('DELETE', '/relationships/' + relId);
+  showToast('Relationship removed'); await loadFamily();
+  if (selectedMemberId) showDetail(selectedMemberId);
+}
+
+// ─── Settings ───
+function openSettings() {
+  document.getElementById('settingsTitle').value = familyData.settings.title || '';
+  document.getElementById('settingsSubtitle').value = familyData.settings.subtitle || '';
+  document.getElementById('settingsModal').classList.add('active');
+  document.getElementById('dropdownMenu').classList.remove('show');
+}
+function closeSettings() { document.getElementById('settingsModal').classList.remove('active'); }
+async function saveSettings() {
+  const s = {
+    title: document.getElementById('settingsTitle').value.trim() || 'Our Family Tree',
+    subtitle: document.getElementById('settingsSubtitle').value.trim()
+  };
+  await api('PUT', '/settings', s);
+  familyData.settings = s; updateTitle(); closeSettings(); showToast('Settings saved');
+}
+
+// ─── Export / Import ───
+function exportData() {
+  const blob = new Blob([JSON.stringify(familyData, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+  a.download = 'family-tree-export.json'; a.click(); URL.revokeObjectURL(a.href);
+  document.getElementById('dropdownMenu').classList.remove('show'); showToast('Data exported');
+}
+
+async function importData(event) {
+  const file = event.target.files[0]; if (!file) return;
+  try {
+    const data = JSON.parse(await file.text());
+    if (!data.members || !data.relationships) throw new Error('Invalid');
+    await api('POST', '/import', data);
+    showToast('Data imported'); await loadFamily();
+  } catch { showToast('Invalid file format'); }
+  event.target.value = '';
+  document.getElementById('dropdownMenu').classList.remove('show');
+}
+
+// ─── Detail Panel ───
+function showDetail(id) {
+  selectedMemberId = id;
+  const m = familyData.members.find(x => x.id === id);
+  if (!m) return;
+  const initials = (m.firstName[0] || '') + (m.lastName[0] || '');
+  const photoHtml = m.photoUrl ? `<img src="${resolvePhotoUrl(m.photoUrl)}" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">` : '';
+  const initialsHtml = `<span class="initials" ${m.photoUrl ? 'style="display:none"' : ''}>${initials}</span>`;
+
+  const spouses = familyData.relationships.filter(r => r.type === 'spouse' && (r.person1 === id || r.person2 === id))
+    .map(r => ({ rel: r, member: familyData.members.find(x => x.id === (r.person1 === id ? r.person2 : r.person1)) })).filter(x => x.member);
+  const parents = familyData.relationships.filter(r => r.type === 'parent-child' && r.person2 === id)
+    .map(r => ({ rel: r, member: familyData.members.find(x => x.id === r.person1) })).filter(x => x.member);
+  const children = familyData.relationships.filter(r => r.type === 'parent-child' && r.person1 === id)
+    .map(r => ({ rel: r, member: familyData.members.find(x => x.id === r.person2) })).filter(x => x.member);
+  const siblings = findSiblings(id);
+
+  function relList(label, items) {
+    if (!items.length) return '';
+    return `<div class="detail-relations"><h4>${label}</h4>${items.map(x => {
+      const i = (x.member.firstName[0]||'')+(x.member.lastName[0]||'');
+      const p = x.member.photoUrl ? `<img src="${resolvePhotoUrl(x.member.photoUrl)}" onerror="this.style.display='none'">` : `<span class="initials">${i}</span>`;
+      const delBtn = x.rel.id !== 'sibling' ? `<button class="btn btn-sm btn-danger" style="margin-left:auto;padding:2px 6px;font-size:0.7rem" onclick="event.stopPropagation();deleteRelationship('${x.rel.id}')">✕</button>` : '';
+      return `<div class="detail-rel-item" onclick="showDetail('${x.member.id}')"><div class="mini-photo">${p}</div><span>${x.member.firstName} ${x.member.lastName}</span>${delBtn}</div>`;
+    }).join('')}</div>`;
+  }
+
+  const dates = [];
+  if (m.birthDate) dates.push('b. ' + formatDate(m.birthDate));
+  if (m.deathDate) dates.push('d. ' + formatDate(m.deathDate));
+
+  document.getElementById('detailContent').innerHTML = `
+    <div class="detail-photo ${m.gender}">${photoHtml}${initialsHtml}</div>
+    <div class="detail-name">${m.firstName} ${m.lastName}</div>
+    ${m.maidenName ? `<div class="detail-maiden">née ${m.maidenName}</div>` : ''}
+    ${dates.length ? `<div class="detail-dates">${dates.join(' — ')}</div>` : ''}
+    ${m.bio ? `<div class="detail-bio">${m.bio}</div>` : ''}
+    ${relList('Spouse / Partner', spouses)}
+    ${relList('Parents', parents)}
+    ${relList('Children', children)}
+    ${relList('Siblings', siblings)}
+    <div class="detail-actions">
+      <button class="btn" onclick="openEditMember('${m.id}')">✏️ Edit</button>
+      <button class="btn btn-danger" onclick="deleteMember('${m.id}')">🗑 Delete</button>
+    </div>`;
+  document.getElementById('detailPanel').classList.add('open');
+}
+
+function closeDetailPanel() { document.getElementById('detailPanel').classList.remove('open'); selectedMemberId = null; }
+
+function findSiblings(id) {
+  const parentIds = familyData.relationships.filter(r => r.type === 'parent-child' && r.person2 === id).map(r => r.person1);
+  if (!parentIds.length) return [];
+  const sibIds = new Set();
+  parentIds.forEach(pid => familyData.relationships.filter(r => r.type === 'parent-child' && r.person1 === pid && r.person2 !== id).forEach(r => sibIds.add(r.person2)));
+  return [...sibIds].map(sid => ({ rel: { id: 'sibling' }, member: familyData.members.find(x => x.id === sid) })).filter(x => x.member);
+}
+
+function formatDate(d) {
+  if (!d) return '';
+  return new Date(d + 'T00:00:00').toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+}
+
+// ─── Tree Rendering ───
+function renderTree() {
+  const container = document.getElementById('treeRender');
+  if (familyData.members.length === 0) {
+    container.innerHTML = `<div class="empty-state"><div class="tree-icon">🌳</div><h2>Start Your Family Tree</h2>
+      <p>Add your first family member to begin. You can add photos via Immich or pCloud URLs and connect members with relationships.</p>
+      <button class="btn btn-primary" onclick="openAddMember()">+ Add First Person</button></div>`;
+    return;
+  }
+  const generations = buildGenerations();
+  container.innerHTML = renderGenerations(generations);
+}
+
+function buildGenerations() {
+  const members = familyData.members;
+  const rels = familyData.relationships;
+  const hasParent = new Set();
+  rels.filter(r => r.type === 'parent-child').forEach(r => hasParent.add(r.person2));
+
+  // Roots: no parents
+  const roots = members.filter(m => !hasParent.has(m.id));
+  // Find unconnected (no relationships at all)
+  const connected = new Set();
+  rels.forEach(r => { connected.add(r.person1); connected.add(r.person2); });
+  const unconnected = members.filter(m => !connected.has(m.id));
+
+  const rootsOnly = roots.filter(m => !unconnected.includes(m));
+  const couples = groupCouples(rootsOnly);
+  const generations = [];
+  let currentGen = couples;
+
+  while (currentGen.length > 0) {
+    generations.push(currentGen);
+    const nextGen = [];
+    const seen = new Set();
+    currentGen.forEach(unit => {
+      const parentIds = unit.map(m => m.id);
+      const childIds = [];
+      rels.filter(r => r.type === 'parent-child' && parentIds.includes(r.person1)).forEach(r => {
+        if (!seen.has(r.person2)) { seen.add(r.person2); childIds.push(r.person2); }
+      });
+      if (childIds.length > 0) {
+        const children = childIds.map(cid => members.find(m => m.id === cid)).filter(Boolean);
+        const childCouples = groupCouples(children);
+        nextGen.push(...childCouples);
+      }
+    });
+    currentGen = nextGen;
+  }
+
+  if (unconnected.length > 0) {
+    const uCouples = unconnected.map(m => [m]);
+    if (generations.length > 0) generations[generations.length - 1].push(...uCouples);
+    else generations.push(uCouples);
+  }
+
+  return generations;
+}
+
+function groupCouples(membersList) {
+  const rels = familyData.relationships;
+  const used = new Set();
+  const couples = [];
+
+  membersList.forEach(m => {
+    if (used.has(m.id)) return;
+    used.add(m.id);
+    // Spouse in same list?
+    const spRel = rels.find(r => r.type === 'spouse' &&
+      ((r.person1 === m.id && membersList.some(x => x.id === r.person2 && !used.has(x.id))) ||
+       (r.person2 === m.id && membersList.some(x => x.id === r.person1 && !used.has(x.id)))));
+    if (spRel) {
+      const sid = spRel.person1 === m.id ? spRel.person2 : spRel.person1;
+      used.add(sid);
+      couples.push([m, membersList.find(x => x.id === sid)]);
+      return;
+    }
+    // Spouse outside list?
+    const spRel2 = rels.find(r => r.type === 'spouse' && (r.person1 === m.id || r.person2 === m.id));
+    if (spRel2) {
+      const sid = spRel2.person1 === m.id ? spRel2.person2 : spRel2.person1;
+      const spouse = familyData.members.find(x => x.id === sid);
+      if (spouse && !used.has(sid)) { used.add(sid); couples.push([m, spouse]); return; }
+    }
+    couples.push([m]);
+  });
+  return couples;
+}
+
+function renderGenerations(generations) {
+  if (!generations.length) return '';
+  const labels = ['Grandparents', 'Parents', 'Children', 'Grandchildren', 'Great-Grandchildren'];
+  return generations.map((gen, gi) => {
+    const label = generations.length <= labels.length ? labels[labels.length - generations.length + gi] : `Generation ${gi + 1}`;
+    const units = gen.map(unit => {
+      if (unit.length === 2) {
+        return `<div class="family-unit"><div class="couple-row">${memberCard(unit[0])}<span class="heart-connector">♥</span>${memberCard(unit[1])}</div></div>`;
+      }
+      return `<div class="family-unit">${memberCard(unit[0])}</div>`;
+    }).join('');
+    return `<div class="gen-label">${label}</div><div class="generation-row">${units}</div>`;
+  }).join('');
+}
+
+function memberCard(m) {
+  const initials = (m.firstName[0] || '') + (m.lastName[0] || '');
+  const photo = m.photoUrl
+    ? `<img src="${resolvePhotoUrl(m.photoUrl)}" loading="lazy" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">`
+    : '';
+  const iSpan = `<span class="initials" ${m.photoUrl ? 'style="display:none"' : ''}>${initials}</span>`;
+  const years = [];
+  if (m.birthDate) years.push(new Date(m.birthDate + 'T00:00:00').getFullYear());
+  if (m.deathDate) years.push(new Date(m.deathDate + 'T00:00:00').getFullYear());
+  return `<div class="member-card" onclick="showDetail('${m.id}')" style="animation-delay:${Math.random()*0.3}s">
+    <div class="member-photo ${m.gender}">${photo}${iSpan}</div>
+    <div class="member-name">${m.firstName} ${m.lastName}</div>
+    ${m.maidenName ? `<div class="member-maiden">née ${m.maidenName}</div>` : ''}
+    ${years.length ? `<div class="member-dates">${years.join(' – ')}</div>` : ''}
+  </div>`;
+}
+
+// ─── Sample Data ───
+async function loadSampleData() {
+  document.getElementById('dropdownMenu').classList.remove('show');
+  if (familyData.members.length > 0 && !confirm('Replace current tree with sample data?')) return;
+  const sample = {
+    settings: { title: 'Our Family Tree', subtitle: 'The Anderson & Brown Family' },
+    members: [
+      { id:'gf1', firstName:'Betty', lastName:'Brown', maidenName:'', gender:'female', birthDate:'1945-03-12', deathDate:'', photoUrl:'', bio:'Family matriarch' },
+      { id:'gm1', firstName:'Ron', lastName:'Anderson', gender:'male', birthDate:'1943-07-20', deathDate:'', photoUrl:'', bio:'Family patriarch' },
+      { id:'p1', firstName:'Marina', lastName:'Rostova', gender:'female', birthDate:'1968-11-05', deathDate:'', photoUrl:'', bio:'Stepdaughter' },
+      { id:'p2', firstName:'Jace', lastName:'Anderson', gender:'male', birthDate:'1970-02-14', deathDate:'', photoUrl:'', bio:'' },
+      { id:'p3', firstName:'Alyssa', lastName:'Anderson', maidenName:'Lewis', gender:'female', birthDate:'1972-09-30', deathDate:'', photoUrl:'', bio:'' },
+      { id:'p4', firstName:'Aaron', lastName:'Lewis', gender:'male', birthDate:'1940-01-18', deathDate:'2015-12-01', photoUrl:'', bio:'' },
+      { id:'c1', firstName:'Jessie', lastName:'Anderson', gender:'female', birthDate:'1995-06-22', deathDate:'', photoUrl:'', bio:'' },
+      { id:'c2', firstName:'Evan', lastName:'Anderson', gender:'male', birthDate:'1997-03-10', deathDate:'', photoUrl:'', bio:'' },
+      { id:'c3', firstName:'Ginger', lastName:'Anderson', gender:'female', birthDate:'2000-12-25', deathDate:'', photoUrl:'', bio:'' },
+      { id:'c4', firstName:'Christian', lastName:'Lewis', gender:'male', birthDate:'1998-08-15', deathDate:'', photoUrl:'', bio:'' },
+      { id:'c5', firstName:'Maria', lastName:'Lewis', gender:'female', birthDate:'2001-04-02', deathDate:'', photoUrl:'', bio:'' }
+    ],
+    relationships: [
+      { id:'r1', type:'spouse', person1:'gf1', person2:'gm1' },
+      { id:'r2', type:'parent-child', person1:'gf1', person2:'p1' },
+      { id:'r3', type:'parent-child', person1:'gf1', person2:'p2' },
+      { id:'r4', type:'parent-child', person1:'gm1', person2:'p2' },
+      { id:'r5', type:'parent-child', person1:'gm1', person2:'p3' },
+      { id:'r6', type:'parent-child', person1:'gf1', person2:'p3' },
+      { id:'r7', type:'spouse', person1:'p3', person2:'p4' },
+      { id:'r8', type:'parent-child', person1:'p2', person2:'c1' },
+      { id:'r9', type:'parent-child', person1:'p2', person2:'c2' },
+      { id:'r10', type:'parent-child', person1:'p2', person2:'c3' },
+      { id:'r11', type:'parent-child', person1:'p3', person2:'c4' },
+      { id:'r12', type:'parent-child', person1:'p4', person2:'c4' },
+      { id:'r13', type:'parent-child', person1:'p3', person2:'c5' },
+      { id:'r14', type:'parent-child', person1:'p4', person2:'c5' }
+    ]
+  };
+  await api('POST', '/import', sample);
+  showToast('Sample tree loaded'); await loadFamily();
+}
+
+// ─── Init ───
+loadFamily();
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') { closeMemberModal(); closeRelModal(); closeSettings(); closeDetailPanel(); }
+});
+document.querySelectorAll('.modal-overlay').forEach(el => {
+  el.addEventListener('click', (e) => { if (e.target === el) el.classList.remove('active'); });
+});
+</script>
+</body>
+</html>
