@@ -491,7 +491,9 @@ document.addEventListener('click', (e) => {
 // ─── Photo URL Resolution ───
 function resolvePhotoUrl(url) {
   if (!url) return '';
-  return url;
+  // Route all external URLs through our server-side proxy
+  // This handles Immich shared links, pCloud, CORS, etc.
+  return '/api/photo?url=' + encodeURIComponent(url);
 }
 
 function updatePhotoPreview() {

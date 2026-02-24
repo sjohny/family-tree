@@ -113,6 +113,92 @@ app.delete('/api/relationships/:id', (req, res) => {
   res.json({ ok: true });
 });
 
+// ─── Image Proxy ───
+// Fetches images server-side to handle Immich shared links, pCloud, CORS issues, etc.
+app.get('/api/photo', async (req, res) => {
+  const url = req.query.url;
+  if (!url) return res.status(400).json({ error: 'url parameter required' });
+
+  try {
+    const http = url.startsWith('https') ? require('https') : require('http');
+
+    const fetchUrl = (targetUrl, redirectCount = 0) => {
+      if (redirectCount > 5) return res.status(502).json({ error: 'Too many redirects' });
+
+      const request = (targetUrl.startsWith('https') ? require('https') : require('http')).get(targetUrl, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0',
+          'Accept': 'image/*,*/*'
+        },
+        timeout: 10000
+      }, (response) => {
+        // Follow redirects
+        if ([301, 302, 303, 307, 308].includes(response.statusCode) && response.headers.location) {
+          let redirectUrl = response.headers.location;
+          if (redirectUrl.startsWith('/')) {
+            const parsed = new URL(targetUrl);
+            redirectUrl = parsed.origin + redirectUrl;
+          }
+          response.resume();
+          return fetchUrl(redirectUrl, redirectCount + 1);
+        }
+
+        if (response.statusCode !== 200) {
+          response.resume();
+          return res.status(response.statusCode).json({ error: 'Upstream error' });
+        }
+
+        // For Immich shared links — the HTML page contains og:image meta tag
+        const contentType = response.headers['content-type'] || '';
+        if (contentType.includes('text/html')) {
+          let body = '';
+          response.setEncoding('utf8');
+          response.on('data', chunk => body += chunk);
+          response.on('end', () => {
+            // Try to extract og:image or immich thumbnail URL
+            const ogMatch = body.match(/<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']/i);
+            if (ogMatch && ogMatch[1]) {
+              return fetchUrl(ogMatch[1], redirectCount + 1);
+            }
+            // Try to find asset ID in Immich shared page
+            const assetMatch = body.match(/assets\/([a-f0-9-]+)/i);
+            if (assetMatch) {
+              const parsed = new URL(targetUrl);
+              const assetUrl = `${parsed.origin}/api/assets/${assetMatch[1]}/thumbnail?size=preview`;
+              return fetchUrl(assetUrl, redirectCount + 1);
+            }
+            res.status(404).json({ error: 'No image found at URL' });
+          });
+          return;
+        }
+
+        // Pipe the image directly
+        res.setHeader('Content-Type', contentType);
+        res.setHeader('Cache-Control', 'public, max-age=86400');
+        if (response.headers['content-length']) {
+          res.setHeader('Content-Length', response.headers['content-length']);
+        }
+        response.pipe(res);
+      });
+
+      request.on('error', (err) => {
+        console.error('Photo proxy error:', err.message);
+        if (!res.headersSent) res.status(502).json({ error: 'Failed to fetch image' });
+      });
+
+      request.on('timeout', () => {
+        request.destroy();
+        if (!res.headersSent) res.status(504).json({ error: 'Timeout fetching image' });
+      });
+    };
+
+    fetchUrl(url);
+  } catch (err) {
+    console.error('Photo proxy error:', err);
+    if (!res.headersSent) res.status(500).json({ error: 'Internal error' });
+  }
+});
+
 app.get('/api/export', (req, res) => {
   const data = loadData();
   res.setHeader('Content-Disposition', 'attachment; filename=family-tree-export.json');
