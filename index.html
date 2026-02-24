@@ -721,9 +721,10 @@ function buildGenerations() {
   const spouseRels = rels.filter(r => r.type === 'spouse');
 
   // Build adjacency maps
-  const childrenOf = {};
-  const parentsOf = {};
-  const spousesOf = {};
+  // parent-child: person1 = parent, person2 = child
+  const childrenOf = {};  // parentId -> [childIds]
+  const parentsOf = {};   // childId -> [parentIds]
+  const spousesOf = {};   // personId -> [spouseIds]
 
   parentChildRels.forEach(r => {
     if (!childrenOf[r.person1]) childrenOf[r.person1] = [];
@@ -739,58 +740,69 @@ function buildGenerations() {
     spousesOf[r.person2].push(r.person1);
   });
 
-  // Assign generation depth via BFS
-  // Key insight: spouses share depth, children are depth+1
+  // Assign generation depth
   const depth = {};
-  const hasParent = new Set(parentChildRels.map(r => r.person2));
 
-  // Seed with true roots (no parents defined)
-  const roots = members.filter(m => !hasParent.has(m.id));
-  const queue = [];
+  // True roots: members who have NO parents in any parent-child relationship
+  const hasParentSet = new Set();
+  parentChildRels.forEach(r => hasParentSet.add(r.person2));
 
-  roots.forEach(m => {
-    if (!(m.id in depth)) {
+  // Start with only the topmost ancestors — people who are parents but not children
+  const trueRoots = members.filter(m =>
+    !hasParentSet.has(m.id) && (childrenOf[m.id] || []).length > 0
+  );
+
+  // If no parent-child rels exist, everyone is generation 0
+  if (trueRoots.length === 0) {
+    members.forEach(m => { depth[m.id] = 0; });
+  } else {
+    // BFS from true roots
+    const queue = [];
+    trueRoots.forEach(m => {
       depth[m.id] = 0;
       queue.push(m.id);
+    });
+
+    while (queue.length > 0) {
+      const current = queue.shift();
+      const d = depth[current];
+
+      // Children are one generation below (PROCESS FIRST to set correct depth)
+      (childrenOf[current] || []).forEach(cid => {
+        if (!(cid in depth)) {
+          depth[cid] = d + 1;
+          queue.push(cid);
+        }
+      });
+
+      // Spouses share the same generation
+      (spousesOf[current] || []).forEach(sid => {
+        if (!(sid in depth)) {
+          depth[sid] = d;
+          queue.push(sid);
+        }
+      });
     }
-  });
-
-  // BFS: spouses get same depth, children get depth+1
-  while (queue.length > 0) {
-    const current = queue.shift();
-    const d = depth[current];
-
-    // Spouses share the same generation
-    (spousesOf[current] || []).forEach(sid => {
-      if (!(sid in depth)) {
-        depth[sid] = d;
-        queue.push(sid);
-      }
-    });
-
-    // Children are one generation below
-    (childrenOf[current] || []).forEach(cid => {
-      if (!(cid in depth)) {
-        depth[cid] = d + 1;
-        queue.push(cid);
-      }
-    });
   }
 
-  // Any unvisited members (totally disconnected) go to depth 0
+  // Any unvisited members (totally disconnected — no parent-child rels) go to max+1
+  const placedDepths = Object.values(depth);
+  const maxPlaced = placedDepths.length > 0 ? Math.max(...placedDepths) : -1;
   members.forEach(m => {
-    if (!(m.id in depth)) depth[m.id] = 0;
+    if (!(m.id in depth)) depth[m.id] = maxPlaced + 1;
   });
 
   // Normalize so min depth = 0
-  const minD = Math.min(...Object.values(depth));
+  const allDepths = members.map(m => depth[m.id]);
+  const minD = Math.min(...allDepths);
   members.forEach(m => { depth[m.id] -= minD; });
   const maxD = Math.max(...members.map(m => depth[m.id]));
 
   // Group by generation
   const genArrays = [];
   for (let d = 0; d <= maxD; d++) {
-    genArrays.push(members.filter(m => depth[m.id] === d));
+    const genMembers = members.filter(m => depth[m.id] === d);
+    if (genMembers.length > 0) genArrays.push(genMembers);
   }
 
   // Within each generation, pair up couples
