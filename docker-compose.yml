@@ -1,0 +1,14 @@
+version: "3.8"
+
+services:
+  family-tree:
+    image: spjts/family-tree:latest
+    container_name: family-tree
+    restart: unless-stopped
+    ports:
+      - "3080:3000"
+    volumes:
+      - /mnt/pool1/dockge/config/family-tree:/app/data
+    environment:
+      - NODE_ENV=production
+      - DATA_DIR=/app/data
