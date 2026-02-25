@@ -436,70 +436,171 @@ function layoutTree() {
     (spousesOf[r.person2] = spousesOf[r.person2] || []).push(r.person1);
   });
 
-  // ── Assign depths ──
+  // ─────────────────────────────────────────
+  //  GENERATION (ROW) ASSIGNMENT — robust
+  //  Rules:
+  //   - spouse => same generation
+  //   - parent-child => child = max(child, parent+1)
+  //   - iterate until stable
+  // ─────────────────────────────────────────
   const depth = {};
-  const hasParentSet = new Set(pcRels.map(r => r.person2));
+  members.forEach(m => depth[m.id] = 0);
 
-  const trueRoots = members.filter(m => {
-    if (hasParentSet.has(m.id)) return false;
-    if (!(childrenOf[m.id]||[]).length) return false;
-    if ((spousesOf[m.id]||[]).some(sid => hasParentSet.has(sid))) return false;
-    return true;
-  });
+  const MAX_ITERS = members.length * 5;
 
-  if (trueRoots.length === 0) {
-    members.forEach(m => { depth[m.id] = 0; });
-  } else {
-    const queue = [];
-    trueRoots.forEach(m => { depth[m.id] = 0; queue.push(m.id); });
-    while (queue.length) {
-      const cur = queue.shift(), d = depth[cur];
-      (childrenOf[cur]||[]).forEach(c => { if(!(c in depth)){depth[c]=d+1;queue.push(c);} });
-      (spousesOf[cur]||[]).forEach(s => { if(!(s in depth)){depth[s]=d;queue.push(s);} });
-    }
-    // Constraint solver
-    for (let i = 0; i < 100; i++) {
-      let changed = false;
-      spRels.forEach(r => {
-        if(r.person1 in depth && r.person2 in depth && depth[r.person1]!==depth[r.person2]) {
-          const mx=Math.max(depth[r.person1],depth[r.person2]); depth[r.person1]=mx; depth[r.person2]=mx; changed=true;
-        }
-      });
-      pcRels.forEach(r => {
-        if(r.person1 in depth && r.person2 in depth) {
-          if(depth[r.person2]<=depth[r.person1]){depth[r.person2]=depth[r.person1]+1;changed=true;}
-          if(depth[r.person1]>=depth[r.person2]){depth[r.person1]=depth[r.person2]-1;changed=true;}
-        }
-      });
-      spRels.forEach(sr => {
-        const pa1=(parentsOf[sr.person1]||[]).filter(id=>id in depth);
-        const pa2=(parentsOf[sr.person2]||[]).filter(id=>id in depth);
-        if(pa1.length&&pa2.length){const mn=Math.min(...pa1.map(id=>depth[id]),...pa2.map(id=>depth[id]));[...pa1,...pa2].forEach(id=>{if(depth[id]!==mn){depth[id]=mn;changed=true;}});}
-      });
-      if(!changed) break;
-    }
+  for (let i = 0; i < MAX_ITERS; i++) {
+    let changed = false;
+
+    // spouses same generation (use max to pull up)
+    spRels.forEach(r => {
+      const a = r.person1, b = r.person2;
+      const mx = Math.max(depth[a] ?? 0, depth[b] ?? 0);
+      if (depth[a] !== mx) { depth[a] = mx; changed = true; }
+      if (depth[b] !== mx) { depth[b] = mx; changed = true; }
+    });
+
+    // children below parents
+    pcRels.forEach(r => {
+      const p = r.person1, c = r.person2;
+      const want = (depth[p] ?? 0) + 1;
+      if ((depth[c] ?? 0) < want) { depth[c] = want; changed = true; }
+    });
+
+    if (!changed) break;
   }
 
-  const placedD = Object.values(depth);
-  const maxP = placedD.length ? Math.max(...placedD) : -1;
-  members.forEach(m => { if(!(m.id in depth)) depth[m.id] = maxP + 1; });
-  const minD = Math.min(...members.map(m=>depth[m.id]));
-  members.forEach(m => { depth[m.id] -= minD; });
-  const maxD = Math.max(...members.map(m=>depth[m.id]));
+  // normalize so min depth becomes 0
+  const minD = Math.min(...Object.values(depth));
+  Object.keys(depth).forEach(id => depth[id] -= minD);
 
-  // ── Group by generation, pair couples ──
-  const gens = [];
+  const maxD = Math.max(...Object.values(depth));
+
+  // ─────────────────────────────────────────
+  //  BUILD COUPLE/SINGLE UNITS PER GENERATION
+  // ─────────────────────────────────────────
+  const spousesOf = {};
+  spRels.forEach(r => {
+    (spousesOf[r.person1] = spousesOf[r.person1] || []).push(r.person2);
+    (spousesOf[r.person2] = spousesOf[r.person2] || []).push(r.person1);
+  });
+
+  // unitKey = "a|b" for spouse couple (sorted), or "a" for single
+  const personToUnitKey = {};
+  const unitKeyToMembers = {};
+  const used = new Set();
+
+  // create units generation-by-generation so couples form only inside same gen
   for (let d = 0; d <= maxD; d++) {
     const gm = members.filter(m => depth[m.id] === d);
-    if (!gm.length) continue;
-    const units = [], used = new Set();
     gm.forEach(m => {
-      if (used.has(m.id)) return; used.add(m.id);
-      const sp = (spousesOf[m.id]||[]).find(sid => !used.has(sid) && gm.some(x=>x.id===sid));
-      if (sp) { used.add(sp); units.push([m, gm.find(x=>x.id===sp)]); }
-      else units.push([m]);
+      if (used.has(m.id)) return;
+
+      const spouseId = (spousesOf[m.id] || []).find(sid => {
+        if (used.has(sid)) return false;
+        return depth[sid] === d; // only pair within same gen
+      });
+
+      if (spouseId) {
+        const a = [m.id, spouseId].sort();
+        const key = a.join('|');
+        used.add(m.id); used.add(spouseId);
+        unitKeyToMembers[key] = a;
+        personToUnitKey[m.id] = key;
+        personToUnitKey[spouseId] = key;
+      } else {
+        const key = m.id;
+        used.add(m.id);
+        unitKeyToMembers[key] = [m.id];
+        personToUnitKey[m.id] = key;
+      }
     });
-    gens.push({ depth: d, units });
+  }
+
+  // group unit keys by generation
+  const unitsByGen = Array.from({ length: maxD + 1 }, () => []);
+  Object.entries(unitKeyToMembers).forEach(([key, ids]) => {
+    // generation of unit = generation of its first member (same for couple)
+    const d = depth[ids[0]] ?? 0;
+    unitsByGen[d].push(key);
+  });
+
+  // ─────────────────────────────────────────
+  //  ORDERING: traverse from root units -> children units
+  //  so rows appear like you described
+  // ─────────────────────────────────────────
+  const childrenOf = {};
+  const parentsOf = {};
+  pcRels.forEach(r => {
+    (childrenOf[r.person1] = childrenOf[r.person1] || []).push(r.person2);
+    (parentsOf[r.person2] = parentsOf[r.person2] || []).push(r.person1);
+  });
+
+  // unit graph: parentUnit -> childUnit
+  const unitChildren = {};
+  const unitParents = {};
+  Object.keys(unitKeyToMembers).forEach(k => { unitChildren[k] = new Set(); unitParents[k] = new Set(); });
+
+  pcRels.forEach(r => {
+    const pu = personToUnitKey[r.person1];
+    const cu = personToUnitKey[r.person2];
+    if (!pu || !cu || pu === cu) return;
+    unitChildren[pu].add(cu);
+    unitParents[cu].add(pu);
+  });
+
+  const orderedUnitsByGen = Array.from({ length: maxD + 1 }, () => []);
+
+  // root units = no unitParents AND has children (or you can keep all)
+  const rootUnits = unitsByGen[0]
+    .filter(u => unitParents[u].size === 0)
+    .sort((u1, u2) => {
+      // stable readable sorting by name as fallback
+      const a1 = unitKeyToMembers[u1][0], a2 = unitKeyToMembers[u2][0];
+      const m1 = members.find(x => x.id === a1), m2 = members.find(x => x.id === a2);
+      const s1 = `${m1?.lastName||''} ${m1?.firstName||''}`.toLowerCase();
+      const s2 = `${m2?.lastName||''} ${m2?.firstName||''}`.toLowerCase();
+      return s1.localeCompare(s2);
+    });
+
+  const seenUnit = new Set();
+
+  // seed gen0
+  rootUnits.forEach(u => { orderedUnitsByGen[0].push(u); seenUnit.add(u); });
+
+  // include any remaining gen0 units (disconnected) after roots
+  unitsByGen[0].forEach(u => {
+    if (!seenUnit.has(u)) { orderedUnitsByGen[0].push(u); seenUnit.add(u); }
+  });
+
+  // propagate order downward
+  for (let d = 0; d < maxD; d++) {
+    // ensure current gen has all units
+    unitsByGen[d].forEach(u => {
+      if (!orderedUnitsByGen[d].includes(u)) orderedUnitsByGen[d].push(u);
+    });
+
+    const next = [];
+    orderedUnitsByGen[d].forEach(u => {
+      [...unitChildren[u]].forEach(cu => {
+        if ((depth[unitKeyToMembers[cu][0]] ?? 0) === d + 1 && !next.includes(cu)) {
+          next.push(cu);
+        }
+      });
+    });
+
+    // add leftover units in next gen
+    unitsByGen[d + 1].forEach(u => { if (!next.includes(u)) next.push(u); });
+    orderedUnitsByGen[d + 1] = next;
+  }
+
+  // finally build gens = [{depth, units:[ [memberObj...], ... ]}]
+  const gens = [];
+  for (let d = 0; d <= maxD; d++) {
+    const orderedKeys = orderedUnitsByGen[d].length ? orderedUnitsByGen[d] : unitsByGen[d];
+    const units = orderedKeys
+      .filter(k => (unitKeyToMembers[k] || []).length)
+      .map(k => unitKeyToMembers[k].map(id => members.find(m => m.id === id)).filter(Boolean));
+    if (units.length) gens.push({ depth: d, units });
   }
 
   // ── Calculate positions ──
