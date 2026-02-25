@@ -779,57 +779,49 @@ function buildGenerations() {
       });
     }
 
-    // Post-BFS: ensure spouses are at the same depth
-    // (handles edge cases where spouse was seeded before partner's path reached them)
+    // ─── Constraint solver ───
+    // Rules: 
+    //   1. Spouses must share the same depth
+    //   2. A child must be exactly parent's depth + 1 (or deeper)
+    //   3. When a child is pushed deeper (by spouse rule), their parent may need to move too
+    //
+    // Strategy: iterate until stable
+    let iterations = 0;
     let changed = true;
-    while (changed) {
+    while (changed && iterations < 100) {
       changed = false;
-      spouseRels.forEach(r => {
-        if (r.person1 in depth && r.person2 in depth) {
-          if (depth[r.person1] !== depth[r.person2]) {
-            // Spouse with a parent should inherit the depth from the parent-child path
-            const p1HasParent = hasParentSet.has(r.person1);
-            const p2HasParent = hasParentSet.has(r.person2);
-            if (p1HasParent && !p2HasParent) {
-              depth[r.person2] = depth[r.person1];
-              changed = true;
-            } else if (p2HasParent && !p1HasParent) {
-              depth[r.person1] = depth[r.person2];
-              changed = true;
-            } else {
-              // Both or neither have parents — use the larger depth
-              const maxD = Math.max(depth[r.person1], depth[r.person2]);
-              depth[r.person1] = maxD;
-              depth[r.person2] = maxD;
-              changed = true;
-            }
-          }
-        }
-      });
-    }
+      iterations++;
 
-    // Re-cascade children after spouse corrections
-    let cascadeChanged = true;
-    while (cascadeChanged) {
-      cascadeChanged = false;
-      parentChildRels.forEach(r => {
-        if (r.person1 in depth && r.person2 in depth) {
-          if (depth[r.person2] <= depth[r.person1]) {
-            depth[r.person2] = depth[r.person1] + 1;
-            cascadeChanged = true;
-          }
-        }
-      });
-      // Re-sync spouses after cascade
+      // Rule 1: Spouses share depth (use the MAX so we never push someone above their parent)
       spouseRels.forEach(r => {
         if (r.person1 in depth && r.person2 in depth) {
           if (depth[r.person1] !== depth[r.person2]) {
             const maxD = Math.max(depth[r.person1], depth[r.person2]);
-            if (depth[r.person1] !== maxD || depth[r.person2] !== maxD) {
-              depth[r.person1] = maxD;
-              depth[r.person2] = maxD;
-              cascadeChanged = true;
-            }
+            depth[r.person1] = maxD;
+            depth[r.person2] = maxD;
+            changed = true;
+          }
+        }
+      });
+
+      // Rule 2a: Children must be deeper than parents
+      parentChildRels.forEach(r => {
+        if (r.person1 in depth && r.person2 in depth) {
+          if (depth[r.person2] <= depth[r.person1]) {
+            depth[r.person2] = depth[r.person1] + 1;
+            changed = true;
+          }
+        }
+      });
+
+      // Rule 2b: Parents must be shallower than children
+      // If a child got pushed deep (via spouse rule), pull the parent up to child-1
+      parentChildRels.forEach(r => {
+        if (r.person1 in depth && r.person2 in depth) {
+          const requiredParentMax = depth[r.person2] - 1;
+          if (depth[r.person1] > requiredParentMax) {
+            depth[r.person1] = requiredParentMax;
+            changed = true;
           }
         }
       });
