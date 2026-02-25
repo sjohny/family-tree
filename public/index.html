@@ -1277,37 +1277,43 @@
           const allChildIds = new Set();
           parentIds.forEach(pid => (childrenOf[pid] || []).forEach(cid => allChildIds.add(cid)));
           if (!allChildIds.size) return;
-
+      
           const parentPos = unitPositions[`${gi}-${ui}`];
           if (!parentPos) return;
-
+      
           const parentBottomY = parentPos.cy + CARD_H - 20;
           const parentCx = parentPos.cx;
-
+      
           const childNodes = [...allChildIds].map(cid => nodes.find(n => n.id === cid)).filter(Boolean);
           if (!childNodes.length) return;
-
+      
           const childTopY = Math.min(...childNodes.map(n => n.y));
-          const midY = parentBottomY + (childTopY - parentBottomY) / 2;
-
+      
+          const lane = ui % 6;
+          const LANE_GAP = 10;
+          const midBase = parentBottomY + (childTopY - parentBottomY) / 2;
+          const midY = midBase + lane * LANE_GAP;
+      
+          // vertical from parent down to midY
           lines.push({ x1: parentCx, y1: parentBottomY, x2: parentCx, y2: midY });
-
-          const childCxs = childNodes.map(n => n.x + CARD_W / 2).sort((a,b) => a - b);
-
+      
+          const childCxs = childNodes.map(n => n.x + CARD_W / 2).sort((a, b) => a - b);
+      
           if (childCxs.length === 1) {
             lines.push({ x1: parentCx, y1: midY, x2: childCxs[0], y2: midY });
             lines.push({ x1: childCxs[0], y1: midY, x2: childCxs[0], y2: childTopY });
           } else {
-            lines.push({ x1: childCxs[0], y1: midY, x2: childCxs[childCxs.length-1], y2: midY });
-
-            if (parentCx < childCxs[0] || parentCx > childCxs[childCxs.length-1]) {
-              lines.push({
-                x1: parentCx, y1: midY,
-                x2: parentCx < childCxs[0] ? childCxs[0] : childCxs[childCxs.length-1],
-                y2: midY
-              });
-            }
-
+            const minCx = childCxs[0];
+            const maxCx = childCxs[childCxs.length - 1];
+            const joinX = Math.min(Math.max(parentCx, minCx), maxCx);
+      
+            // parent joins the child bus at joinX
+            lines.push({ x1: parentCx, y1: midY, x2: joinX, y2: midY });
+      
+            // horizontal bus across children
+            lines.push({ x1: minCx, y1: midY, x2: maxCx, y2: midY });
+      
+            // vertical drops to each child
             childCxs.forEach(cx => lines.push({ x1: cx, y1: midY, x2: cx, y2: childTopY }));
           }
         });
