@@ -739,9 +739,17 @@ function buildGenerations() {
   const hasParentSet = new Set();
   parentChildRels.forEach(r => hasParentSet.add(r.person2));
 
-  const trueRoots = members.filter(m =>
-    !hasParentSet.has(m.id) && (childrenOf[m.id] || []).length > 0
-  );
+  // True roots: no parents, AND not a spouse of someone who has parents
+  // (spouses-of-children get their depth through the BFS spouse path instead)
+  const trueRoots = members.filter(m => {
+    if (hasParentSet.has(m.id)) return false;
+    const isParent = (childrenOf[m.id] || []).length > 0;
+    if (!isParent) return false;
+    // Exclude if spouse has parents (they'll inherit depth via spouse link)
+    const mySpouses = spousesOf[m.id] || [];
+    if (mySpouses.some(sid => hasParentSet.has(sid))) return false;
+    return true;
+  });
 
   if (trueRoots.length === 0) {
     members.forEach(m => { depth[m.id] = 0; });
@@ -767,6 +775,62 @@ function buildGenerations() {
         if (!(sid in depth)) {
           depth[sid] = d;
           queue.push(sid);
+        }
+      });
+    }
+
+    // Post-BFS: ensure spouses are at the same depth
+    // (handles edge cases where spouse was seeded before partner's path reached them)
+    let changed = true;
+    while (changed) {
+      changed = false;
+      spouseRels.forEach(r => {
+        if (r.person1 in depth && r.person2 in depth) {
+          if (depth[r.person1] !== depth[r.person2]) {
+            // Spouse with a parent should inherit the depth from the parent-child path
+            const p1HasParent = hasParentSet.has(r.person1);
+            const p2HasParent = hasParentSet.has(r.person2);
+            if (p1HasParent && !p2HasParent) {
+              depth[r.person2] = depth[r.person1];
+              changed = true;
+            } else if (p2HasParent && !p1HasParent) {
+              depth[r.person1] = depth[r.person2];
+              changed = true;
+            } else {
+              // Both or neither have parents — use the larger depth
+              const maxD = Math.max(depth[r.person1], depth[r.person2]);
+              depth[r.person1] = maxD;
+              depth[r.person2] = maxD;
+              changed = true;
+            }
+          }
+        }
+      });
+    }
+
+    // Re-cascade children after spouse corrections
+    let cascadeChanged = true;
+    while (cascadeChanged) {
+      cascadeChanged = false;
+      parentChildRels.forEach(r => {
+        if (r.person1 in depth && r.person2 in depth) {
+          if (depth[r.person2] <= depth[r.person1]) {
+            depth[r.person2] = depth[r.person1] + 1;
+            cascadeChanged = true;
+          }
+        }
+      });
+      // Re-sync spouses after cascade
+      spouseRels.forEach(r => {
+        if (r.person1 in depth && r.person2 in depth) {
+          if (depth[r.person1] !== depth[r.person2]) {
+            const maxD = Math.max(depth[r.person1], depth[r.person2]);
+            if (depth[r.person1] !== maxD || depth[r.person2] !== maxD) {
+              depth[r.person1] = maxD;
+              depth[r.person2] = maxD;
+              cascadeChanged = true;
+            }
+          }
         }
       });
     }
