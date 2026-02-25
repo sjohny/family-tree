@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Our Family Tree</title>
+
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600;700&family=Lora:wght@400;500&family=Source+Sans+3:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+
+<body>
+  <header class="app-header">
+    <div class="header-inner">
+      <div class="header-title" id="headerTitle">Family<span>Tree</span></div>
+      <div class="header-actions">
+        <button class="btn btn-primary" id="btnAddPerson">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+          </svg>
+          Add Person
+        </button>
+
+        <button class="btn" id="btnAddRelation">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4-4v2"/>
+            <circle cx="9" cy="7" r="4"/>
+            <path d="M22 21v-2a4 4 0 00-3-3.87"/>
+            <path d="M16 3.13a4 4 0 010 7.75"/>
+          </svg>
+          Add Relation
+        </button>
+
+        <div class="dropdown">
+          <button class="btn btn-icon" id="btnMenu" aria-label="Menu">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="1"/><circle cx="12" cy="5" r="1"/><circle cx="12" cy="19" r="1"/>
+            </svg>
+          </button>
+          <div class="dropdown-menu" id="dropdownMenu">
+            <button id="btnSettings">⚙️ Settings</button>
+            <button id="btnExport">📁 Export Data</button>
+            <button id="btnImport">📥 Import Data</button>
+            <hr>
+            <button id="btnLoadSample">🌳 Load Sample Tree</button>
+            <button id="btnResetLayout">🧹 Reset manual layout</button>
+          </div>
+        </div>
+
+        <input type="file" id="importInput" accept=".json" style="display:none">
+      </div>
+    </div>
+  </header>
+
+  <div class="tree-container" id="treeContainer">
+    <div class="tree-title-section">
+      <h1 id="treeTitle">Our Family Tree</h1>
+      <div class="subtitle" id="treeSubtitle"></div>
+    </div>
+    <div id="treeCanvas"></div>
+  </div>
+
+  <div class="detail-panel" id="detailPanel">
+    <div class="detail-panel-header">
+      <div></div>
+      <button class="btn btn-icon btn-sm" id="btnCloseDetails" aria-label="Close details">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+        </svg>
+      </button>
+    </div>
+    <div id="detailContent"></div>
+  </div>
+
+  <!-- Member Modal -->
+  <div class="modal-overlay" id="memberModal">
+    <div class="modal">
+      <div class="modal-header">
+        <h2 id="memberModalTitle">Add Family Member</h2>
+        <button class="btn btn-icon btn-sm" id="btnCloseMemberModal" aria-label="Close">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+          </svg>
+        </button>
+      </div>
+
+      <div class="modal-body">
+        <input type="hidden" id="memberId">
+        <div class="form-row">
+          <div class="form-group"><label>First Name</label><input type="text" id="firstName" placeholder="e.g. John"></div>
+          <div class="form-group"><label>Last Name</label><input type="text" id="lastName" placeholder="e.g. Smith"></div>
+        </div>
+        <div class="form-row">
+          <div class="form-group"><label>Maiden Name</label><input type="text" id="maidenName" placeholder="Optional"></div>
+          <div class="form-group">
+            <label>Gender</label>
+            <select id="gender">
+              <option value="male">Male</option>
+              <option value="female">Female</option>
+              <option value="unknown">Other</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group"><label>Birth Date</label><input type="date" id="birthDate"></div>
+          <div class="form-group"><label>Death Date</label><input type="date" id="deathDate"></div>
+        </div>
+        <div class="form-group">
+          <label>Generation (override)</label>
+          <select id="generationOverride">
+            <option value="">Auto</option>
+            <option value="0">Top (Oldest)</option>
+            <option value="1">Row 2</option>
+            <option value="2">Row 3</option>
+            <option value="3">Row 4</option>
+            <option value="4">Row 5</option>
+            <option value="5">Row 6</option>
+          </select>
+          <div class="help-text">Force this person to render in a specific generation row.</div>
+        </div>
+
+        <div class="photo-preview-row">
+          <div class="form-group">
+            <label>Photo URL</label>
+            <input type="url" id="photoUrl" placeholder="Immich / pCloud / direct URL">
+            <div class="help-text">Immich shared links, pCloud public links, or direct image URLs</div>
+          </div>
+          <div class="photo-preview" id="photoPreview"><span class="preview-placeholder">No photo</span></div>
+        </div>
+
+        <div class="form-group"><label>Bio / Notes</label><textarea id="bio" placeholder="A short biography..."></textarea></div>
+      </div>
+
+      <div class="modal-footer">
+        <button class="btn" id="btnCancelMember">Cancel</button>
+        <button class="btn btn-primary" id="btnSaveMember">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Relationship Modal -->
+  <div class="modal-overlay" id="relModal">
+    <div class="modal">
+      <div class="modal-header">
+        <h2>Add Relationship</h2>
+        <button class="btn btn-icon btn-sm" id="btnCloseRelModal" aria-label="Close">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+          </svg>
+        </button>
+      </div>
+
+      <div class="modal-body">
+        <div class="form-group">
+          <label>Relationship Type</label>
+          <select id="relType">
+            <option value="parent-child">Parent → Child</option>
+            <option value="spouse">Spouse / Partner</option>
+          </select>
+        </div>
+        <div class="form-group"><label id="relPerson1Label">Parent</label><select id="relPerson1"></select></div>
+        <div class="form-group"><label id="relPerson2Label">Child</label><select id="relPerson2"></select></div>
+      </div>
+
+      <div class="modal-footer">
+        <button class="btn" id="btnCancelRel">Cancel</button>
+        <button class="btn btn-primary" id="btnSaveRel">Add Relationship</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Settings Modal -->
+  <div class="modal-overlay" id="settingsModal">
+    <div class="modal">
+      <div class="modal-header">
+        <h2>Settings</h2>
+        <button class="btn btn-icon btn-sm" id="btnCloseSettings" aria-label="Close">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+          </svg>
+        </button>
+      </div>
+
+      <div class="modal-body">
+        <div class="form-group"><label>Tree Title</label><input type="text" id="settingsTitle" placeholder="Our Family Tree"></div>
+        <div class="form-group"><label>Subtitle</label><input type="text" id="settingsSubtitle" placeholder="Description..."></div>
+        <div class="form-group">
+          <div class="help-text">
+            Tip: Drag a person (their couple/unit) left/right to reduce line crossings. Saved in your browser.
+          </div>
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button class="btn" id="btnCancelSettings">Cancel</button>
+        <button class="btn btn-primary" id="btnSaveSettings">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <script src="./api.js"></script>
+  <script src="./app.js"></script>
+</body>
+</html>
