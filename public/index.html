@@ -32,6 +32,8 @@
       pointer-events:none;
       z-index:0;
     }
+    body.dragging { user-select:none; cursor:grabbing; }
+    body.dragging * { cursor:grabbing !important; }
 
     /* Header */
     .app-header {
@@ -93,10 +95,12 @@
       position:absolute;
       display:flex; flex-direction:column; align-items:center; gap:4px;
       cursor:pointer;
-      transition:transform 0.2s;
+      transition:transform 0.15s;
       z-index:1;
+      touch-action:none; /* important for pointer drag */
     }
     .tree-node:hover { transform:translateY(-3px); }
+    .tree-node.drag-hint { cursor:grab; }
     .tree-node .photo {
       width:76px; height:76px;
       border-radius:50%;
@@ -116,7 +120,7 @@
       font-family:'Lora',serif;
       font-size:0.78rem; font-weight:500;
       text-align:center; line-height:1.2;
-      max-width:110px;
+      max-width:120px;
     }
     .tree-node .dates { font-size:0.68rem; color:var(--text-muted); text-align:center; }
     .tree-node .maiden { font-size:0.68rem; color:var(--text-soft); font-style:italic; }
@@ -378,6 +382,7 @@
             <button onclick="document.getElementById('importInput').click()">📥 Import Data</button>
             <hr>
             <button onclick="loadSampleData()">🌳 Load Sample Tree</button>
+            <button onclick="resetLayout()">🧹 Reset manual layout</button>
           </div>
         </div>
 
@@ -439,7 +444,6 @@
           <div class="form-group"><label>Birth Date</label><input type="date" id="birthDate"></div>
           <div class="form-group"><label>Death Date</label><input type="date" id="deathDate"></div>
         </div>
-
         <div class="form-group">
           <label>Generation (override)</label>
           <select id="generationOverride">
@@ -450,12 +454,9 @@
             <option value="3">Row 4</option>
             <option value="4">Row 5</option>
             <option value="5">Row 6</option>
-            <option value="6">Row 7</option>
-            <option value="7">Row 8</option>
           </select>
-          <div class="help-text">Force this person to render in a specific generation row (0 = oldest).</div>
+          <div class="help-text">Force this person to render in a specific generation row.</div>
         </div>
-
         <div class="photo-preview-row">
           <div class="form-group">
             <label>Photo URL</label>
@@ -521,6 +522,11 @@
       <div class="modal-body">
         <div class="form-group"><label>Tree Title</label><input type="text" id="settingsTitle" placeholder="Our Family Tree"></div>
         <div class="form-group"><label>Subtitle</label><input type="text" id="settingsSubtitle" placeholder="Description..."></div>
+        <div class="form-group">
+          <div class="help-text">
+            Tip: You can <b>drag a person (their whole couple/unit)</b> left/right to reduce line crossings. This is saved in your browser.
+          </div>
+        </div>
       </div>
 
       <div class="modal-footer">
@@ -538,6 +544,21 @@
     // ═══════════════════════════════════════════
     let familyData = { members:[], relationships:[], settings:{ title:'Our Family Tree', subtitle:'' } };
     let selectedMemberId = null;
+
+    // manual horizontal offsets per unitKey (personId or "a|b" for couples)
+    let unitOffsets = {}; // { [unitKey]: { dx:number } }
+
+    // drag state
+    let drag = {
+      active:false,
+      unitKey:null,
+      pointerId:null,
+      startClientX:0,
+      startDx:0,
+      moved:false,
+      justEnded:false,
+      justEndedTimer:null,
+    };
 
     // ═══════════════════════════════════════════
     //  API
@@ -563,6 +584,36 @@
       return res.json();
     }
 
+    // ═══════════════════════════════════════════
+    //  LOCAL STORAGE (layout only)
+    // ═══════════════════════════════════════════
+    const OFFSETS_KEY = "familyTree.unitOffsets.v1";
+
+    function loadOffsetsFromStorage() {
+      try {
+        const raw = localStorage.getItem(OFFSETS_KEY);
+        unitOffsets = raw ? JSON.parse(raw) : {};
+        if (!unitOffsets || typeof unitOffsets !== "object") unitOffsets = {};
+      } catch {
+        unitOffsets = {};
+      }
+    }
+
+    function saveOffsetsToStorage() {
+      try {
+        localStorage.setItem(OFFSETS_KEY, JSON.stringify(unitOffsets));
+      } catch {}
+    }
+
+    function resetLayout() {
+      closeMenu();
+      if (!confirm("Reset all manual left/right adjustments?")) return;
+      unitOffsets = {};
+      saveOffsetsToStorage();
+      renderTree();
+      showToast("Manual layout reset");
+    }
+
     async function loadFamily() {
       try {
         familyData = await api("GET", "/family");
@@ -570,14 +621,15 @@
         if (!Array.isArray(familyData.members)) familyData.members = [];
         if (!Array.isArray(familyData.relationships)) familyData.relationships = [];
         if (!familyData.settings) familyData.settings = { title: "Our Family Tree", subtitle: "" };
-        if (familyData.settings.subtitle === undefined) familyData.settings.subtitle = "";
 
+        loadOffsetsFromStorage();
         renderTree();
         updateTitle();
       } catch (e) {
         console.error(e);
         showToast("Failed to load data (check console)");
         familyData = { members: [], relationships: [], settings: { title: "Our Family Tree", subtitle: "" } };
+        loadOffsetsFromStorage();
         renderTree();
         updateTitle();
       }
@@ -601,11 +653,9 @@
     function toggleMenu() {
       document.getElementById('dropdownMenu').classList.toggle('show');
     }
-
     function closeMenu() {
       document.getElementById('dropdownMenu').classList.remove('show');
     }
-
     document.addEventListener('click', e => {
       if (!e.target.closest('.dropdown')) closeMenu();
     });
@@ -616,7 +666,6 @@
     function resolvePhotoUrl(url) {
       return url ? '/api/photo?url=' + encodeURIComponent(url) : '';
     }
-
     function updatePhotoPreview() {
       const url = document.getElementById('photoUrl').value.trim();
       const p = document.getElementById('photoPreview');
@@ -629,12 +678,12 @@
     //  MEMBER CRUD
     // ═══════════════════════════════════════════
     function openAddMember() {
+      document.getElementById('generationOverride').value = '';
       document.getElementById('memberModalTitle').textContent = 'Add Family Member';
       ['memberId','firstName','lastName','maidenName','birthDate','deathDate','photoUrl','bio'].forEach(id => {
         document.getElementById(id).value = '';
       });
       document.getElementById('gender').value = 'male';
-      document.getElementById('generationOverride').value = '';
       updatePhotoPreview();
       document.getElementById('memberModal').classList.add('active');
       setTimeout(() => document.getElementById('firstName').focus(), 100);
@@ -645,16 +694,14 @@
       const m = familyData.members.find(x => x.id === id);
       if (!m) return;
 
-      document.getElementById('memberModalTitle').textContent = 'Edit ' + (m.firstName || '');
-      document.getElementById('memberId').value = m.id;
-
-      ['firstName','lastName','maidenName','gender','birthDate','deathDate','photoUrl','bio'].forEach(f => {
-        document.getElementById(f).value = m[f] || '';
-      });
-
       document.getElementById('generationOverride').value =
         (m.generationOverride === 0 || m.generationOverride) ? String(m.generationOverride) : '';
 
+      document.getElementById('memberModalTitle').textContent = 'Edit ' + (m.firstName || '');
+      document.getElementById('memberId').value = m.id;
+      ['firstName','lastName','maidenName','gender','birthDate','deathDate','photoUrl','bio'].forEach(f => {
+        document.getElementById(f).value = m[f] || '';
+      });
       updatePhotoPreview();
       document.getElementById('memberModal').classList.add('active');
       closeMenu();
@@ -678,7 +725,7 @@
         deathDate: document.getElementById('deathDate').value,
         photoUrl: document.getElementById('photoUrl').value.trim(),
         bio: document.getElementById('bio').value.trim(),
-        generationOverride: Number.isFinite(generationOverride) ? generationOverride : null
+        generationOverride
       };
 
       if (!d.firstName) { showToast('First name required'); return; }
@@ -837,6 +884,12 @@
     // ═══════════════════════════════════════════
     //  DETAIL PANEL
     // ═══════════════════════════════════════════
+    function showDetailWrapper(id) {
+      // prevent accidental click after a drag
+      if (drag.justEnded) return;
+      showDetail(id);
+    }
+
     function showDetail(id) {
       selectedMemberId = id;
       const m = familyData.members.find(x => x.id === id);
@@ -947,6 +1000,80 @@
     }
 
     // ═══════════════════════════════════════════
+    //  DRAG: move a unit left/right
+    // ═══════════════════════════════════════════
+    function onNodePointerDown(e, unitKey) {
+      // only left click or touch/pen; ignore right click
+      if (e.button !== undefined && e.button !== 0) return;
+
+      drag.active = true;
+      drag.unitKey = unitKey;
+      drag.pointerId = e.pointerId ?? null;
+      drag.startClientX = e.clientX;
+      drag.startDx = (unitOffsets[unitKey]?.dx || 0);
+      drag.moved = false;
+
+      if (drag.justEndedTimer) clearTimeout(drag.justEndedTimer);
+      drag.justEnded = false;
+
+      document.body.classList.add("dragging");
+
+      // capture pointer so we keep receiving move events
+      try { e.currentTarget.setPointerCapture(e.pointerId); } catch {}
+
+      e.preventDefault();
+      e.stopPropagation();
+    }
+
+    function onNodePointerMove(e) {
+      if (!drag.active) return;
+      if (drag.pointerId !== null && e.pointerId !== drag.pointerId) return;
+
+      const delta = e.clientX - drag.startClientX;
+      if (Math.abs(delta) > 3) drag.moved = true;
+
+      const newDx = drag.startDx + delta;
+
+      // optional: clamp so things don't fly away
+      const CLAMP = 600;
+      const clamped = Math.max(-CLAMP, Math.min(CLAMP, newDx));
+
+      unitOffsets[drag.unitKey] = { dx: clamped };
+      renderTree();
+      e.preventDefault();
+    }
+
+    function onNodePointerUp(e) {
+      if (!drag.active) return;
+      if (drag.pointerId !== null && e.pointerId !== drag.pointerId) return;
+
+      drag.active = false;
+      document.body.classList.remove("dragging");
+
+      // save only if actually moved
+      if (drag.moved) {
+        saveOffsetsToStorage();
+        showToast("Layout adjusted (saved in browser)");
+      }
+
+      // prevent click firing immediately after drag
+      drag.justEnded = drag.moved;
+      drag.justEndedTimer = setTimeout(() => { drag.justEnded = false; }, 200);
+
+      drag.unitKey = null;
+      drag.pointerId = null;
+      drag.moved = false;
+
+      e.preventDefault();
+      e.stopPropagation();
+    }
+
+    // bind global pointer listeners once
+    window.addEventListener("pointermove", onNodePointerMove, { passive:false });
+    window.addEventListener("pointerup", onNodePointerUp, { passive:false });
+    window.addEventListener("pointercancel", onNodePointerUp, { passive:false });
+
+    // ═══════════════════════════════════════════
     //  TREE LAYOUT ENGINE
     // ═══════════════════════════════════════════
     const CARD_W = 110;     // card width
@@ -981,7 +1108,7 @@
       nodes.forEach(n => {
         const m = familyData.members.find(x => x.id === n.id);
         if (!m) return;
-        html += makeNodeHtml(m, n.x, n.y);
+        html += makeNodeHtml(m, n.x, n.y, n.unitKey);
       });
 
       genLabels.forEach(gl => {
@@ -994,7 +1121,7 @@
       canvas.innerHTML = html;
     }
 
-    function makeNodeHtml(m, x, y) {
+    function makeNodeHtml(m, x, y, unitKey) {
       const ini = (m.firstName?.[0] || '') + (m.lastName?.[0] || '');
       const ph = m.photoUrl
         ? `<img src="${resolvePhotoUrl(m.photoUrl)}" loading="lazy" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">`
@@ -1005,7 +1132,11 @@
       if (m.birthDate) yrs.push(new Date(m.birthDate + 'T00:00:00').getFullYear());
       if (m.deathDate) yrs.push(new Date(m.deathDate + 'T00:00:00').getFullYear());
 
-      return `<div class="tree-node" style="left:${x}px;top:${y}px;width:${CARD_W}px;" onclick="showDetail('${m.id}')">
+      return `<div class="tree-node drag-hint"
+        style="left:${x}px;top:${y}px;width:${CARD_W}px;"
+        onclick="showDetailWrapper('${m.id}')"
+        onpointerdown="onNodePointerDown(event, '${escapeHtml(unitKey)}')"
+        title="Drag left/right to adjust layout">
         <div class="photo ${escapeHtml(m.gender || '')}">${ph}${iS}</div>
         <div class="name">${escapeHtml(m.firstName || '')} ${escapeHtml(m.lastName || '')}</div>
         ${m.maidenName ? `<div class="maiden">née ${escapeHtml(m.maidenName)}</div>` : ''}
@@ -1020,16 +1151,16 @@
       const spRels = rels.filter(r => r.type === 'spouse');
 
       // ─────────────────────────────────────────
-      // GENERATION (ROW) ASSIGNMENT — with manual overrides
-      //  - generationOverride (number) anchors a person to a row
-      //  - spouses share row (propagate anchor across spouse graph)
+      // GENERATION ASSIGNMENT (with manual overrides)
+      //  - generationOverride anchors a person to a row
+      //  - spouses share row (propagate anchor across spouse component)
       //  - parent-child enforces child >= parent + 1
       // ─────────────────────────────────────────
       const depth = {};
       members.forEach(m => depth[m.id] = 0);
 
-      // 1) Seed anchors
-      const anchor = {}; // id -> anchoredDepth
+      // 1) anchors
+      const anchor = {};
       members.forEach(m => {
         if (m.generationOverride === 0 || m.generationOverride) {
           const v = Number(m.generationOverride);
@@ -1037,25 +1168,24 @@
         }
       });
 
-      // 2) Build spouse adjacency
+      // 2) spouse adjacency
       const spouseAdj = {};
       spRels.forEach(r => {
         (spouseAdj[r.person1] = spouseAdj[r.person1] || []).push(r.person2);
         (spouseAdj[r.person2] = spouseAdj[r.person2] || []).push(r.person1);
       });
 
-      // 3) Propagate anchors through spouse groups (if any member anchored, whole group anchored to max)
+      // 3) propagate anchors through spouse components (component anchor = max)
       const visited = new Set();
       Object.keys(anchor).forEach(startId => {
         if (visited.has(startId)) return;
-
         const q = [startId];
-        const component = [];
+        const comp = [];
         visited.add(startId);
 
         while (q.length) {
           const cur = q.shift();
-          component.push(cur);
+          comp.push(cur);
           (spouseAdj[cur] || []).forEach(nxt => {
             if (!visited.has(nxt)) {
               visited.add(nxt);
@@ -1064,12 +1194,13 @@
           });
         }
 
-        const anchoredVals = component.map(id => anchor[id]).filter(v => v !== undefined);
-        const compAnchor = anchoredVals.length ? Math.max(...anchoredVals) : undefined;
-        if (compAnchor !== undefined) component.forEach(id => { anchor[id] = compAnchor; });
+        const anchoredVals = comp.map(id => anchor[id]).filter(v => v !== undefined);
+        if (!anchoredVals.length) return;
+        const compAnchor = Math.max(...anchoredVals);
+        comp.forEach(id => { anchor[id] = compAnchor; });
       });
 
-      // 4) Initialize depth with anchors
+      // 4) init depth with anchors
       Object.keys(anchor).forEach(id => { depth[id] = Math.max(depth[id], anchor[id]); });
 
       const MAX_ITERS = members.length * 8;
@@ -1077,7 +1208,7 @@
       for (let i = 0; i < MAX_ITERS; i++) {
         let changed = false;
 
-        // spouses same generation: pull both up to max of the two (never pull down)
+        // spouses same generation: pull up to max (never down)
         spRels.forEach(r => {
           const a = r.person1, b = r.person2;
           const mx = Math.max(depth[a] ?? 0, depth[b] ?? 0);
@@ -1085,12 +1216,12 @@
           if (depth[b] !== mx) { depth[b] = mx; changed = true; }
         });
 
-        // honor anchors (never allow below anchor)
+        // honor anchors
         Object.entries(anchor).forEach(([id, ad]) => {
           if ((depth[id] ?? 0) < ad) { depth[id] = ad; changed = true; }
         });
 
-        // parent-child constraints
+        // parent-child
         pcRels.forEach(r => {
           const p = r.person1, c = r.person2;
           const want = (depth[p] ?? 0) + 1;
@@ -1100,14 +1231,14 @@
         if (!changed) break;
       }
 
-      // normalize so min depth becomes 0 (keep relative rows compact)
+      // normalize min depth to 0
       const minD = Math.min(...Object.values(depth));
       Object.keys(depth).forEach(id => depth[id] -= minD);
-
       const maxD = Math.max(...Object.values(depth));
 
       // ─────────────────────────────────────────
       // BUILD COUPLE/SINGLE UNITS PER GENERATION
+      //  - ensure female on the RIGHT (male left), when gender known
       // ─────────────────────────────────────────
       const spousesOf = {};
       spRels.forEach(r => {
@@ -1121,31 +1252,26 @@
 
       for (let d = 0; d <= maxD; d++) {
         const gm = members.filter(m => depth[m.id] === d);
-      
         gm.forEach(m => {
           if (used.has(m.id)) return;
-      
-          const spouseId = (spousesOf[m.id] || []).find(
-            sid => !used.has(sid) && depth[sid] === d
-          );
-      
+
+          const spouseId = (spousesOf[m.id] || []).find(sid => !used.has(sid) && depth[sid] === d);
+
           if (spouseId) {
-            const m1 = m; // already have it
+            const m1 = members.find(x => x.id === m.id);
             const m2 = members.find(x => x.id === spouseId);
-      
+
             let leftId, rightId;
-      
             if (m1?.gender === 'male' && m2?.gender === 'female') {
               leftId = m1.id; rightId = m2.id;
             } else if (m1?.gender === 'female' && m2?.gender === 'male') {
               leftId = m2.id; rightId = m1.id;
             } else {
-              [leftId, rightId] = [m1.id, spouseId].sort(); // stable fallback
+              [leftId, rightId] = [m.id, spouseId].sort();
             }
-      
+
             const key = `${leftId}|${rightId}`;
             used.add(leftId); used.add(rightId);
-      
             unitKeyToMembers[key] = [leftId, rightId];
             personToUnitKey[leftId] = key;
             personToUnitKey[rightId] = key;
@@ -1158,15 +1284,14 @@
         });
       }
 
+      // units by generation
       const unitsByGen = Array.from({ length: maxD + 1 }, () => []);
       Object.entries(unitKeyToMembers).forEach(([key, ids]) => {
         const d = depth[ids[0]] ?? 0;
         unitsByGen[d].push(key);
       });
 
-      // ─────────────────────────────────────────
-      // ORDERING: root units -> children units
-      // ─────────────────────────────────────────
+      // ordering: roots -> children
       const childrenOf = {};
       pcRels.forEach(r => {
         (childrenOf[r.person1] = childrenOf[r.person1] || []).push(r.person2);
@@ -1190,9 +1315,9 @@
         .filter(u => unitParents[u].size === 0)
         .sort((u1, u2) => {
           const a1 = unitKeyToMembers[u1][0], a2 = unitKeyToMembers[u2][0];
-          const m1 = members.find(x => x.id === a1), m2 = members.find(x => x.id === a2);
-          const s1 = `${m1?.lastName||''} ${m1?.firstName||''}`.toLowerCase();
-          const s2 = `${m2?.lastName||''} ${m2?.firstName||''}`.toLowerCase();
+          const mm1 = members.find(x => x.id === a1), mm2 = members.find(x => x.id === a2);
+          const s1 = `${mm1?.lastName||''} ${mm1?.firstName||''}`.toLowerCase();
+          const s2 = `${mm2?.lastName||''} ${mm2?.firstName||''}`.toLowerCase();
           return s1.localeCompare(s2);
         });
 
@@ -1219,14 +1344,14 @@
         const units = orderedKeys
           .filter(k => (unitKeyToMembers[k] || []).length)
           .map(k => unitKeyToMembers[k].map(id => members.find(m => m.id === id)).filter(Boolean));
-        if (units.length) gens.push({ depth: d, units });
+        if (units.length) gens.push({ depth: d, unitKeys: orderedKeys, units });
       }
 
       // ── Positions ──
       const nodes = [];
       const lines = [];
-      const unitPositions = {};
 
+      // compute widest row
       let totalW = 0;
       gens.forEach(gen => {
         let genW = 0;
@@ -1239,6 +1364,9 @@
 
       const canvasW = totalW + PADDING * 2;
 
+      // store unit centers by unitKey
+      const unitPosByKey = {}; // unitKey -> { cx, cy, unitW }
+
       gens.forEach((gen, gi) => {
         const y = PADDING + gi * (CARD_H + GEN_GAP);
 
@@ -1249,21 +1377,33 @@
         let x = (canvasW - genW) / 2;
 
         gen.units.forEach((unit, ui) => {
+          const unitKey = gen.unitKeys[ui]; // matches the ordering we used
           const unitW = unit.length === 2 ? 2*CARD_W + COUPLE_GAP : CARD_W;
-          const cx = x + unitW / 2;
+
+          const dx = unitOffsets[unitKey]?.dx || 0;
+          const cx = x + unitW / 2 + dx;
+
+          // derive left edge from shifted center
+          const left = cx - unitW / 2;
 
           if (unit.length === 2) {
-            const x1 = x, x2 = x + CARD_W + COUPLE_GAP;
-            nodes.push({ id: unit[0].id, x: x1, y });
-            nodes.push({ id: unit[1].id, x: x2, y });
+            const leftId = unit[0].id;
+            const rightId = unit[1].id;
 
+            const x1 = left;
+            const x2 = left + CARD_W + COUPLE_GAP;
+
+            nodes.push({ id: leftId, x: x1, y, unitKey });
+            nodes.push({ id: rightId, x: x2, y, unitKey });
+
+            // spouse line
             const lineY = y + 38;
             lines.push({ x1: x1 + CARD_W/2, y1: lineY, x2: x2 + CARD_W/2, y2: lineY });
 
-            unitPositions[`${gi}-${ui}`] = { cx, cy: y, memberIds: [unit[0].id, unit[1].id] };
+            unitPosByKey[unitKey] = { cx: cx, cy: y, unitW, memberIds: [leftId, rightId], gi, ui };
           } else {
-            nodes.push({ id: unit[0].id, x, y });
-            unitPositions[`${gi}-${ui}`] = { cx: x + CARD_W/2, cy: y, memberIds: [unit[0].id] };
+            nodes.push({ id: unit[0].id, x: left, y, unitKey });
+            unitPosByKey[unitKey] = { cx: cx, cy: y, unitW, memberIds: [unit[0].id], gi, ui };
           }
 
           x += unitW + SIBLING_GAP;
@@ -1273,47 +1413,50 @@
       // ── Parent-child lines ──
       gens.forEach((gen, gi) => {
         gen.units.forEach((unit, ui) => {
+          const unitKey = gen.unitKeys[ui];
           const parentIds = unit.map(m => m.id);
+
           const allChildIds = new Set();
           parentIds.forEach(pid => (childrenOf[pid] || []).forEach(cid => allChildIds.add(cid)));
           if (!allChildIds.size) return;
-      
-          const parentPos = unitPositions[`${gi}-${ui}`];
+
+          const parentPos = unitPosByKey[unitKey];
           if (!parentPos) return;
-      
+
           const parentBottomY = parentPos.cy + CARD_H - 20;
           const parentCx = parentPos.cx;
-      
+
           const childNodes = [...allChildIds].map(cid => nodes.find(n => n.id === cid)).filter(Boolean);
           if (!childNodes.length) return;
-      
+
+          // baseline midpoint + lane jitter to reduce overlaps
           const childTopY = Math.min(...childNodes.map(n => n.y));
-      
-          const lane = ui % 6;
-          const LANE_GAP = 10;
           const midBase = parentBottomY + (childTopY - parentBottomY) / 2;
+
+          const lane = ui % 7;     // more lanes reduces collisions
+          const LANE_GAP = 10;
           const midY = midBase + lane * LANE_GAP;
-      
-          // vertical from parent down to midY
+
+          // drop from parent to bus midY
           lines.push({ x1: parentCx, y1: parentBottomY, x2: parentCx, y2: midY });
-      
-          const childCxs = childNodes.map(n => n.x + CARD_W / 2).sort((a, b) => a - b);
-      
+
+          const childCxs = childNodes.map(n => n.x + CARD_W / 2).sort((a,b) => a - b);
+
           if (childCxs.length === 1) {
             lines.push({ x1: parentCx, y1: midY, x2: childCxs[0], y2: midY });
             lines.push({ x1: childCxs[0], y1: midY, x2: childCxs[0], y2: childTopY });
           } else {
+            // horizontal bus
+            lines.push({ x1: childCxs[0], y1: midY, x2: childCxs[childCxs.length-1], y2: midY });
+
             const minCx = childCxs[0];
             const maxCx = childCxs[childCxs.length - 1];
             const joinX = Math.min(Math.max(parentCx, minCx), maxCx);
-      
-            // parent joins the child bus at joinX
+
+            // connect parent to bus at joinX (avoids long diagonal-ish overlaps)
             lines.push({ x1: parentCx, y1: midY, x2: joinX, y2: midY });
-      
-            // horizontal bus across children
-            lines.push({ x1: minCx, y1: midY, x2: maxCx, y2: midY });
-      
-            // vertical drops to each child
+
+            // drops to children
             childCxs.forEach(cx => lines.push({ x1: cx, y1: midY, x2: cx, y2: childTopY }));
           }
         });
