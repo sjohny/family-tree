@@ -116,7 +116,7 @@
       font-family:'Lora',serif;
       font-size:0.78rem; font-weight:500;
       text-align:center; line-height:1.2;
-      max-width:100px;
+      max-width:110px;
     }
     .tree-node .dates { font-size:0.68rem; color:var(--text-muted); text-align:center; }
     .tree-node .maiden { font-size:0.68rem; color:var(--text-soft); font-style:italic; }
@@ -439,18 +439,23 @@
           <div class="form-group"><label>Birth Date</label><input type="date" id="birthDate"></div>
           <div class="form-group"><label>Death Date</label><input type="date" id="deathDate"></div>
         </div>
-		<div class="form-group">
-		  <label>Generation (override)</label>
-		  <select id="generationOverride">
-			<option value="">Auto</option>
-			<option value="0">Top (Oldest)</option>
-			<option value="1">Row 2</option>
-			<option value="2">Row 3</option>
-			<option value="3">Row 4</option>
-			<option value="4">Row 5</option>
-		  </select>
-		  <div class="help-text">Force this person to render in a specific generation row.</div>
-		</div>
+
+        <div class="form-group">
+          <label>Generation (override)</label>
+          <select id="generationOverride">
+            <option value="">Auto</option>
+            <option value="0">Top (Oldest)</option>
+            <option value="1">Row 2</option>
+            <option value="2">Row 3</option>
+            <option value="3">Row 4</option>
+            <option value="4">Row 5</option>
+            <option value="5">Row 6</option>
+            <option value="6">Row 7</option>
+            <option value="7">Row 8</option>
+          </select>
+          <div class="help-text">Force this person to render in a specific generation row (0 = oldest).</div>
+        </div>
+
         <div class="photo-preview-row">
           <div class="form-group">
             <label>Photo URL</label>
@@ -548,10 +553,8 @@
         throw new Error(`${method} /api${path} failed: ${res.status} ${res.statusText} ${txt}`.slice(0, 400));
       }
 
-      // handle empty responses (e.g., 204 No Content)
       if (res.status === 204) return null;
 
-      // some backends may respond with empty body on 200/201 too
       const ct = res.headers.get("content-type") || "";
       if (!ct.includes("application/json")) {
         const txt = await res.text().catch(() => "");
@@ -567,6 +570,7 @@
         if (!Array.isArray(familyData.members)) familyData.members = [];
         if (!Array.isArray(familyData.relationships)) familyData.relationships = [];
         if (!familyData.settings) familyData.settings = { title: "Our Family Tree", subtitle: "" };
+        if (familyData.settings.subtitle === undefined) familyData.settings.subtitle = "";
 
         renderTree();
         updateTitle();
@@ -625,12 +629,12 @@
     //  MEMBER CRUD
     // ═══════════════════════════════════════════
     function openAddMember() {
-	  document.getElementById('generationOverride').value = '';
       document.getElementById('memberModalTitle').textContent = 'Add Family Member';
       ['memberId','firstName','lastName','maidenName','birthDate','deathDate','photoUrl','bio'].forEach(id => {
         document.getElementById(id).value = '';
       });
       document.getElementById('gender').value = 'male';
+      document.getElementById('generationOverride').value = '';
       updatePhotoPreview();
       document.getElementById('memberModal').classList.add('active');
       setTimeout(() => document.getElementById('firstName').focus(), 100);
@@ -640,13 +644,17 @@
     function openEditMember(id) {
       const m = familyData.members.find(x => x.id === id);
       if (!m) return;
-	  document.getElementById('generationOverride').value =
-		(m.generationOverride === 0 || m.generationOverride) ? String(m.generationOverride) : '';
+
       document.getElementById('memberModalTitle').textContent = 'Edit ' + (m.firstName || '');
       document.getElementById('memberId').value = m.id;
+
       ['firstName','lastName','maidenName','gender','birthDate','deathDate','photoUrl','bio'].forEach(f => {
         document.getElementById(f).value = m[f] || '';
       });
+
+      document.getElementById('generationOverride').value =
+        (m.generationOverride === 0 || m.generationOverride) ? String(m.generationOverride) : '';
+
       updatePhotoPreview();
       document.getElementById('memberModal').classList.add('active');
       closeMenu();
@@ -657,8 +665,9 @@
     }
 
     async function saveMember() {
-	  const genRaw = document.getElementById('generationOverride').value;
+      const genRaw = document.getElementById('generationOverride').value;
       const generationOverride = genRaw === '' ? null : Number(genRaw);
+
       const id = document.getElementById('memberId').value;
       const d = {
         firstName: document.getElementById('firstName').value.trim(),
@@ -669,7 +678,7 @@
         deathDate: document.getElementById('deathDate').value,
         photoUrl: document.getElementById('photoUrl').value.trim(),
         bio: document.getElementById('bio').value.trim(),
-		generationOverride
+        generationOverride: Number.isFinite(generationOverride) ? generationOverride : null
       };
 
       if (!d.firstName) { showToast('First name required'); return; }
@@ -1010,93 +1019,92 @@
       const pcRels = rels.filter(r => r.type === 'parent-child');
       const spRels = rels.filter(r => r.type === 'spouse');
 
-    // ─────────────────────────────────────────
-    //  GENERATION (ROW) ASSIGNMENT — with manual overrides
-    //   - generationOverride (number) anchors a person to a row
-    //   - spouses share row (propagate anchor across spouse graph)
-    //   - parent-child enforces child >= parent + 1
-    // ─────────────────────────────────────────
-    const depth = {};
-    members.forEach(m => depth[m.id] = 0);
-  
-    // 1) Seed anchors
-    const anchor = {}; // id -> anchoredDepth
-    members.forEach(m => {
-      if (m.generationOverride === 0 || m.generationOverride) {
-        const v = Number(m.generationOverride);
-        if (!Number.isNaN(v) && v >= 0) anchor[m.id] = v;
-      }
-    });
-  
-    // 2) Build spouse adjacency
-    const spouseAdj = {};
-    spRels.forEach(r => {
-      (spouseAdj[r.person1] = spouseAdj[r.person1] || []).push(r.person2);
-      (spouseAdj[r.person2] = spouseAdj[r.person2] || []).push(r.person1);
-    });
-  
-    // 3) Propagate anchors through spouse groups (if any member anchored, whole group anchored to max)
-    const visited = new Set();
-    Object.keys(anchor).forEach(startId => {
-      if (visited.has(startId)) return;
-  
-      // BFS spouse component
-      const q = [startId];
-      const component = [];
-      visited.add(startId);
-  
-      while (q.length) {
-        const cur = q.shift();
-        component.push(cur);
-        (spouseAdj[cur] || []).forEach(nxt => {
-          if (!visited.has(nxt)) {
-            visited.add(nxt);
-            q.push(nxt);
-          }
-        });
-      }
-  
-      // Component anchor = max of anchors in the component
-      const compAnchor = Math.max(...component.map(id => anchor[id]).filter(v => v !== undefined));
-      component.forEach(id => { anchor[id] = compAnchor; });
-    });
-  
-    // 4) Initialize depth with anchors
-    Object.keys(anchor).forEach(id => { depth[id] = Math.max(depth[id], anchor[id]); });
-  
-    const MAX_ITERS = members.length * 8;
-  
-    for (let i = 0; i < MAX_ITERS; i++) {
-      let changed = false;
-  
-      // spouses same generation: pull both up to max of the two (never pull down)
+      // ─────────────────────────────────────────
+      // GENERATION (ROW) ASSIGNMENT — with manual overrides
+      //  - generationOverride (number) anchors a person to a row
+      //  - spouses share row (propagate anchor across spouse graph)
+      //  - parent-child enforces child >= parent + 1
+      // ─────────────────────────────────────────
+      const depth = {};
+      members.forEach(m => depth[m.id] = 0);
+
+      // 1) Seed anchors
+      const anchor = {}; // id -> anchoredDepth
+      members.forEach(m => {
+        if (m.generationOverride === 0 || m.generationOverride) {
+          const v = Number(m.generationOverride);
+          if (!Number.isNaN(v) && v >= 0) anchor[m.id] = v;
+        }
+      });
+
+      // 2) Build spouse adjacency
+      const spouseAdj = {};
       spRels.forEach(r => {
-        const a = r.person1, b = r.person2;
-        const mx = Math.max(depth[a] ?? 0, depth[b] ?? 0);
-        if (depth[a] !== mx) { depth[a] = mx; changed = true; }
-        if (depth[b] !== mx) { depth[b] = mx; changed = true; }
+        (spouseAdj[r.person1] = spouseAdj[r.person1] || []).push(r.person2);
+        (spouseAdj[r.person2] = spouseAdj[r.person2] || []).push(r.person1);
       });
-  
-      // honor anchors (never allow below anchor)
-      Object.entries(anchor).forEach(([id, ad]) => {
-        if ((depth[id] ?? 0) < ad) { depth[id] = ad; changed = true; }
+
+      // 3) Propagate anchors through spouse groups (if any member anchored, whole group anchored to max)
+      const visited = new Set();
+      Object.keys(anchor).forEach(startId => {
+        if (visited.has(startId)) return;
+
+        const q = [startId];
+        const component = [];
+        visited.add(startId);
+
+        while (q.length) {
+          const cur = q.shift();
+          component.push(cur);
+          (spouseAdj[cur] || []).forEach(nxt => {
+            if (!visited.has(nxt)) {
+              visited.add(nxt);
+              q.push(nxt);
+            }
+          });
+        }
+
+        const anchoredVals = component.map(id => anchor[id]).filter(v => v !== undefined);
+        const compAnchor = anchoredVals.length ? Math.max(...anchoredVals) : undefined;
+        if (compAnchor !== undefined) component.forEach(id => { anchor[id] = compAnchor; });
       });
-  
-      // parent-child constraints
-      pcRels.forEach(r => {
-        const p = r.person1, c = r.person2;
-        const want = (depth[p] ?? 0) + 1;
-        if ((depth[c] ?? 0) < want) { depth[c] = want; changed = true; }
-      });
-  
-      if (!changed) break;
-    }
-  
-    // normalize so min depth becomes 0 (keep relative rows compact)
-    const minD = Math.min(...Object.values(depth));
-    Object.keys(depth).forEach(id => depth[id] -= minD);
-  
-    const maxD = Math.max(...Object.values(depth));
+
+      // 4) Initialize depth with anchors
+      Object.keys(anchor).forEach(id => { depth[id] = Math.max(depth[id], anchor[id]); });
+
+      const MAX_ITERS = members.length * 8;
+
+      for (let i = 0; i < MAX_ITERS; i++) {
+        let changed = false;
+
+        // spouses same generation: pull both up to max of the two (never pull down)
+        spRels.forEach(r => {
+          const a = r.person1, b = r.person2;
+          const mx = Math.max(depth[a] ?? 0, depth[b] ?? 0);
+          if (depth[a] !== mx) { depth[a] = mx; changed = true; }
+          if (depth[b] !== mx) { depth[b] = mx; changed = true; }
+        });
+
+        // honor anchors (never allow below anchor)
+        Object.entries(anchor).forEach(([id, ad]) => {
+          if ((depth[id] ?? 0) < ad) { depth[id] = ad; changed = true; }
+        });
+
+        // parent-child constraints
+        pcRels.forEach(r => {
+          const p = r.person1, c = r.person2;
+          const want = (depth[p] ?? 0) + 1;
+          if ((depth[c] ?? 0) < want) { depth[c] = want; changed = true; }
+        });
+
+        if (!changed) break;
+      }
+
+      // normalize so min depth becomes 0 (keep relative rows compact)
+      const minD = Math.min(...Object.values(depth));
+      Object.keys(depth).forEach(id => depth[id] -= minD);
+
+      const maxD = Math.max(...Object.values(depth));
 
       // ─────────────────────────────────────────
       // BUILD COUPLE/SINGLE UNITS PER GENERATION
@@ -1233,7 +1241,6 @@
             nodes.push({ id: unit[0].id, x: x1, y });
             nodes.push({ id: unit[1].id, x: x2, y });
 
-            // spouse line
             const lineY = y + 38;
             lines.push({ x1: x1 + CARD_W/2, y1: lineY, x2: x2 + CARD_W/2, y2: lineY });
 
