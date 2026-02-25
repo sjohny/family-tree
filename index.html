@@ -107,34 +107,24 @@ body::before {
   letter-spacing: 0.1em; color: var(--text-muted); margin-bottom: 0.5rem; text-align: center;
 }
 .generation-row {
-  display: flex; justify-content: center; gap: 3rem; margin-bottom: 1rem;
-  flex-wrap: wrap; padding: 1rem 0;
+  display: flex; justify-content: center; gap: 3rem; margin-bottom: 2.5rem;
+  flex-wrap: nowrap; padding: 1rem 0; position: relative;
 }
 .family-unit { display: flex; flex-direction: column; align-items: center; gap: 0.5rem; }
-.couple-row { display: flex; align-items: center; gap: 0.5rem; }
-.heart-connector { color: var(--accent-warm); font-size: 0.8rem; opacity: 0.6; }
+.couple-row { display: flex; align-items: flex-start; gap: 0.75rem; position: relative; }
+.heart-connector { color: var(--accent-warm); font-size: 0.8rem; opacity: 0.6; margin-top: 30px; }
 
-/* ─── Connection Lines ─── */
-.connector-down {
-  width: 1.5px; height: 28px; background: var(--line-color); margin: 0 auto;
+/* ─── SVG Lines Overlay ─── */
+.tree-render { position: relative; overflow-x: auto; padding-bottom: 2rem; }
+#treeSvg {
+  position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+  pointer-events: none; z-index: 0;
 }
-.connector-horizontal {
-  height: 1.5px; background: var(--line-color); margin: 0 auto;
+#treeSvg line, #treeSvg path {
+  stroke: var(--line-color); stroke-width: 1.5; fill: none;
 }
-.children-group {
-  display: flex; gap: 2rem; justify-content: center; position: relative; padding-top: 0.25rem;
-}
-.children-group::before {
-  content: ''; position: absolute; top: -14px; left: 50%;
-  height: 14px; width: 1.5px; background: var(--line-color);
-}
-.children-group.multi::after {
-  content: ''; position: absolute; top: 0; height: 1.5px; background: var(--line-color);
-}
-.child-branch { position: relative; display: flex; flex-direction: column; align-items: center; }
-.child-branch::before {
-  content: ''; position: absolute; top: -14px; left: 50%;
-  height: 14px; width: 1.5px; background: var(--line-color);
+.generation-row, .family-unit, .couple-row, .member-card {
+  position: relative; z-index: 1;
 }
 
 /* ─── Member Card ─── */
@@ -710,8 +700,15 @@ function renderTree() {
       <button class="btn btn-primary" onclick="openAddMember()">+ Add First Person</button></div>`;
     return;
   }
-  const generations = buildGenerations();
-  container.innerHTML = renderGenerations(generations);
+  const { generations, childrenOf, spousesOf, parentsOf } = buildGenerations();
+  container.innerHTML = renderGenerations(generations) + '<svg id="treeSvg"></svg>';
+
+  // Draw lines after DOM is rendered
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      drawConnections(generations, childrenOf, spousesOf, parentsOf);
+    });
+  });
 }
 
 function buildGenerations() {
@@ -720,11 +717,9 @@ function buildGenerations() {
   const parentChildRels = rels.filter(r => r.type === 'parent-child');
   const spouseRels = rels.filter(r => r.type === 'spouse');
 
-  // Build adjacency maps
-  // parent-child: person1 = parent, person2 = child
-  const childrenOf = {};  // parentId -> [childIds]
-  const parentsOf = {};   // childId -> [parentIds]
-  const spousesOf = {};   // personId -> [spouseIds]
+  const childrenOf = {};
+  const parentsOf = {};
+  const spousesOf = {};
 
   parentChildRels.forEach(r => {
     if (!childrenOf[r.person1]) childrenOf[r.person1] = [];
@@ -740,23 +735,17 @@ function buildGenerations() {
     spousesOf[r.person2].push(r.person1);
   });
 
-  // Assign generation depth
   const depth = {};
-
-  // True roots: members who have NO parents in any parent-child relationship
   const hasParentSet = new Set();
   parentChildRels.forEach(r => hasParentSet.add(r.person2));
 
-  // Start with only the topmost ancestors — people who are parents but not children
   const trueRoots = members.filter(m =>
     !hasParentSet.has(m.id) && (childrenOf[m.id] || []).length > 0
   );
 
-  // If no parent-child rels exist, everyone is generation 0
   if (trueRoots.length === 0) {
     members.forEach(m => { depth[m.id] = 0; });
   } else {
-    // BFS from true roots
     const queue = [];
     trueRoots.forEach(m => {
       depth[m.id] = 0;
@@ -767,7 +756,6 @@ function buildGenerations() {
       const current = queue.shift();
       const d = depth[current];
 
-      // Children are one generation below (PROCESS FIRST to set correct depth)
       (childrenOf[current] || []).forEach(cid => {
         if (!(cid in depth)) {
           depth[cid] = d + 1;
@@ -775,7 +763,6 @@ function buildGenerations() {
         }
       });
 
-      // Spouses share the same generation
       (spousesOf[current] || []).forEach(sid => {
         if (!(sid in depth)) {
           depth[sid] = d;
@@ -785,27 +772,23 @@ function buildGenerations() {
     }
   }
 
-  // Any unvisited members (totally disconnected — no parent-child rels) go to max+1
   const placedDepths = Object.values(depth);
   const maxPlaced = placedDepths.length > 0 ? Math.max(...placedDepths) : -1;
   members.forEach(m => {
     if (!(m.id in depth)) depth[m.id] = maxPlaced + 1;
   });
 
-  // Normalize so min depth = 0
   const allDepths = members.map(m => depth[m.id]);
   const minD = Math.min(...allDepths);
   members.forEach(m => { depth[m.id] -= minD; });
   const maxD = Math.max(...members.map(m => depth[m.id]));
 
-  // Group by generation
   const genArrays = [];
   for (let d = 0; d <= maxD; d++) {
     const genMembers = members.filter(m => depth[m.id] === d);
     if (genMembers.length > 0) genArrays.push(genMembers);
   }
 
-  // Within each generation, pair up couples
   const generations = [];
   genArrays.forEach(genList => {
     const units = [];
@@ -830,15 +813,13 @@ function buildGenerations() {
     if (units.length > 0) generations.push(units);
   });
 
-  return generations;
+  return { generations, childrenOf, spousesOf, parentsOf };
 }
 
 function renderGenerations(generations) {
   if (!generations.length) return '';
   const n = generations.length;
 
-  // Generate labels dynamically for any number of generations
-  // Bottom row is always "Children", then going up: Parents, Grandparents, Great-Grandparents, etc.
   function genLabel(index) {
     if (n === 1) return '';
     const fromBottom = n - 1 - index;
@@ -856,11 +837,19 @@ function renderGenerations(generations) {
     const label = genLabel(gi);
     const units = gen.map(unit => {
       if (unit.length === 2) {
-        return `<div class="family-unit"><div class="couple-row">${memberCard(unit[0])}<span class="heart-connector">♥</span>${memberCard(unit[1])}</div></div>`;
+        return `<div class="family-unit" data-unit-ids="${unit[0].id},${unit[1].id}">
+          <div class="couple-row">
+            ${memberCard(unit[0])}
+            <span class="heart-connector">♥</span>
+            ${memberCard(unit[1])}
+          </div>
+        </div>`;
       }
-      return `<div class="family-unit">${memberCard(unit[0])}</div>`;
+      return `<div class="family-unit" data-unit-ids="${unit[0].id}">
+        ${memberCard(unit[0])}
+      </div>`;
     }).join('');
-    return `${label ? `<div class="gen-label">${label}</div>` : ''}<div class="generation-row">${units}</div>`;
+    return `${label ? `<div class="gen-label">${label}</div>` : ''}<div class="generation-row" data-gen="${gi}">${units}</div>`;
   }).join('');
 }
 
@@ -873,13 +862,138 @@ function memberCard(m) {
   const years = [];
   if (m.birthDate) years.push(new Date(m.birthDate + 'T00:00:00').getFullYear());
   if (m.deathDate) years.push(new Date(m.deathDate + 'T00:00:00').getFullYear());
-  return `<div class="member-card" onclick="showDetail('${m.id}')" style="animation-delay:${Math.random()*0.3}s">
+  return `<div class="member-card" data-member-id="${m.id}" onclick="showDetail('${m.id}')" style="animation-delay:${Math.random()*0.3}s">
     <div class="member-photo ${m.gender}">${photo}${iSpan}</div>
     <div class="member-name">${m.firstName} ${m.lastName}</div>
     ${m.maidenName ? `<div class="member-maiden">née ${m.maidenName}</div>` : ''}
     ${years.length ? `<div class="member-dates">${years.join(' – ')}</div>` : ''}
   </div>`;
 }
+
+// ─── SVG Connection Lines ───
+function drawConnections(generations, childrenOf, spousesOf, parentsOf) {
+  const svg = document.getElementById('treeSvg');
+  if (!svg) return;
+  const container = document.getElementById('treeRender');
+  const containerRect = container.getBoundingClientRect();
+  const scrollLeft = container.scrollLeft;
+  const scrollTop = container.scrollTop;
+
+  // Size SVG to full scrollable area
+  svg.setAttribute('width', container.scrollWidth);
+  svg.setAttribute('height', container.scrollHeight);
+  svg.style.width = container.scrollWidth + 'px';
+  svg.style.height = container.scrollHeight + 'px';
+
+  let lines = '';
+
+  // Helper: get center-bottom of a member card's photo
+  function getMemberPos(memberId) {
+    const el = container.querySelector(`[data-member-id="${memberId}"]`);
+    if (!el) return null;
+    const photo = el.querySelector('.member-photo');
+    if (!photo) return null;
+    const r = photo.getBoundingClientRect();
+    return {
+      cx: r.left + r.width / 2 - containerRect.left + scrollLeft,
+      top: r.top - containerRect.top + scrollTop,
+      bottom: r.bottom - containerRect.top + scrollTop,
+      left: r.left - containerRect.left + scrollLeft,
+      right: r.right - containerRect.left + scrollLeft,
+    };
+  }
+
+  // Helper: get center of a couple (midpoint between two members)
+  function getCoupleCenter(ids) {
+    const positions = ids.map(id => getMemberPos(id)).filter(Boolean);
+    if (positions.length === 0) return null;
+    if (positions.length === 1) return { x: positions[0].cx, bottom: positions[0].bottom, top: positions[0].top };
+    const minLeft = Math.min(...positions.map(p => p.cx));
+    const maxRight = Math.max(...positions.map(p => p.cx));
+    return {
+      x: (minLeft + maxRight) / 2,
+      bottom: Math.max(...positions.map(p => p.bottom)),
+      top: Math.min(...positions.map(p => p.top))
+    };
+  }
+
+  // Draw spouse connector lines (horizontal line between couple)
+  const drawnSpouses = new Set();
+  familyData.relationships.filter(r => r.type === 'spouse').forEach(r => {
+    const key = [r.person1, r.person2].sort().join('-');
+    if (drawnSpouses.has(key)) return;
+    drawnSpouses.add(key);
+    const p1 = getMemberPos(r.person1);
+    const p2 = getMemberPos(r.person2);
+    if (p1 && p2) {
+      const y = Math.min(p1.top, p2.top) + 40; // middle of photo
+      lines += `<line x1="${p1.cx}" y1="${y}" x2="${p2.cx}" y2="${y}" />`;
+    }
+  });
+
+  // Draw parent-child connections
+  // Group children by their parent set (couple)
+  const processedChildren = new Set();
+
+  generations.forEach((gen, gi) => {
+    gen.forEach(unit => {
+      const parentIds = unit.map(m => m.id);
+      // Find all children of this unit
+      const allChildIds = new Set();
+      parentIds.forEach(pid => {
+        (childrenOf[pid] || []).forEach(cid => allChildIds.add(cid));
+      });
+
+      if (allChildIds.size === 0) return;
+
+      // Get parent couple center bottom
+      const couplePos = getCoupleCenter(parentIds);
+      if (!couplePos) return;
+
+      const childPositions = [...allChildIds].map(cid => {
+        const pos = getMemberPos(cid);
+        return pos ? { id: cid, ...pos } : null;
+      }).filter(Boolean);
+
+      if (childPositions.length === 0) return;
+
+      // Draw vertical line down from couple center
+      const parentBottom = couplePos.bottom;
+      const childrenTop = Math.min(...childPositions.map(c => c.top));
+      const midY = parentBottom + (childrenTop - parentBottom) / 2;
+
+      // Vertical line from couple down to midpoint
+      lines += `<line x1="${couplePos.x}" y1="${parentBottom}" x2="${couplePos.x}" y2="${midY}" />`;
+
+      if (childPositions.length === 1) {
+        // Single child: straight line down
+        lines += `<line x1="${couplePos.x}" y1="${midY}" x2="${childPositions[0].cx}" y2="${childPositions[0].top}" />`;
+      } else {
+        // Multiple children: horizontal bar + vertical branches
+        const leftMost = Math.min(...childPositions.map(c => c.cx));
+        const rightMost = Math.max(...childPositions.map(c => c.cx));
+
+        // Horizontal bar
+        lines += `<line x1="${leftMost}" y1="${midY}" x2="${rightMost}" y2="${midY}" />`;
+
+        // Vertical line from bar down to each child
+        childPositions.forEach(c => {
+          lines += `<line x1="${c.cx}" y1="${midY}" x2="${c.cx}" y2="${c.top}" />`;
+        });
+      }
+    });
+  });
+
+  svg.innerHTML = lines;
+}
+
+// Redraw lines on resize
+window.addEventListener('resize', () => {
+  if (familyData.members.length > 0) {
+    const { generations, childrenOf, spousesOf, parentsOf } = buildGenerations();
+    drawConnections(generations, childrenOf, spousesOf, parentsOf);
+  }
+});
 
 // ─── Sample Data ───
 async function loadSampleData() {
