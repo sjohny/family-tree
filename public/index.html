@@ -5,14 +5,18 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Our Family Tree</title>
 
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600;700&family=Lora:wght@400;500&family=Source+Sans+3:wght@300;400;500;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="./styles.css" />
+
+  <link rel="stylesheet" href="/app.css" />
+  <script defer src="/app.js"></script>
 </head>
 
 <body>
   <header class="app-header">
     <div class="header-inner">
-      <div class="header-title" id="headerTitle">Family<span>Tree</span></div>
+      <div class="header-title" id="homeTitle">Family<span>Tree</span></div>
       <div class="header-actions">
         <button class="btn btn-primary" id="btnAddPerson">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
@@ -42,8 +46,7 @@
             <button id="btnExport">📁 Export Data</button>
             <button id="btnImport">📥 Import Data</button>
             <hr>
-            <button id="btnLoadSample">🌳 Load Sample Tree</button>
-            <button id="btnResetLayout">🧹 Reset manual layout</button>
+            <button id="btnSample">🌳 Load Sample Tree</button>
           </div>
         </div>
 
@@ -77,7 +80,7 @@
     <div class="modal">
       <div class="modal-header">
         <h2 id="memberModalTitle">Add Family Member</h2>
-        <button class="btn btn-icon btn-sm" id="btnCloseMemberModal" aria-label="Close">
+        <button class="btn btn-icon btn-sm" id="btnCloseMember" aria-label="Close">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
           </svg>
@@ -86,10 +89,12 @@
 
       <div class="modal-body">
         <input type="hidden" id="memberId">
+
         <div class="form-row">
           <div class="form-group"><label>First Name</label><input type="text" id="firstName" placeholder="e.g. John"></div>
           <div class="form-group"><label>Last Name</label><input type="text" id="lastName" placeholder="e.g. Smith"></div>
         </div>
+
         <div class="form-row">
           <div class="form-group"><label>Maiden Name</label><input type="text" id="maidenName" placeholder="Optional"></div>
           <div class="form-group">
@@ -101,10 +106,12 @@
             </select>
           </div>
         </div>
+
         <div class="form-row">
           <div class="form-group"><label>Birth Date</label><input type="date" id="birthDate"></div>
           <div class="form-group"><label>Death Date</label><input type="date" id="deathDate"></div>
         </div>
+
         <div class="form-group">
           <label>Generation (override)</label>
           <select id="generationOverride">
@@ -115,6 +122,7 @@
             <option value="3">Row 4</option>
             <option value="4">Row 5</option>
             <option value="5">Row 6</option>
+            <option value="6">Row 7</option>
           </select>
           <div class="help-text">Force this person to render in a specific generation row.</div>
         </div>
@@ -143,7 +151,7 @@
     <div class="modal">
       <div class="modal-header">
         <h2>Add Relationship</h2>
-        <button class="btn btn-icon btn-sm" id="btnCloseRelModal" aria-label="Close">
+        <button class="btn btn-icon btn-sm" id="btnCloseRel" aria-label="Close">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
           </svg>
@@ -184,11 +192,6 @@
       <div class="modal-body">
         <div class="form-group"><label>Tree Title</label><input type="text" id="settingsTitle" placeholder="Our Family Tree"></div>
         <div class="form-group"><label>Subtitle</label><input type="text" id="settingsSubtitle" placeholder="Description..."></div>
-        <div class="form-group">
-          <div class="help-text">
-            Tip: Drag a person (their couple/unit) left/right to reduce line crossings. Saved in your browser.
-          </div>
-        </div>
       </div>
 
       <div class="modal-footer">
@@ -199,8 +202,5 @@
   </div>
 
   <div class="toast" id="toast"></div>
-
-  <script src="./api.js"></script>
-  <script src="./app.js"></script>
 </body>
 </html>
