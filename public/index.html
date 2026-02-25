@@ -1121,18 +1121,34 @@
 
       for (let d = 0; d <= maxD; d++) {
         const gm = members.filter(m => depth[m.id] === d);
+      
         gm.forEach(m => {
           if (used.has(m.id)) return;
-
-          const spouseId = (spousesOf[m.id] || []).find(sid => !used.has(sid) && depth[sid] === d);
-
+      
+          const spouseId = (spousesOf[m.id] || []).find(
+            sid => !used.has(sid) && depth[sid] === d
+          );
+      
           if (spouseId) {
-            const a = [m.id, spouseId].sort();
-            const key = a.join('|');
-            used.add(m.id); used.add(spouseId);
-            unitKeyToMembers[key] = a;
-            personToUnitKey[m.id] = key;
-            personToUnitKey[spouseId] = key;
+            const m1 = m; // already have it
+            const m2 = members.find(x => x.id === spouseId);
+      
+            let leftId, rightId;
+      
+            if (m1?.gender === 'male' && m2?.gender === 'female') {
+              leftId = m1.id; rightId = m2.id;
+            } else if (m1?.gender === 'female' && m2?.gender === 'male') {
+              leftId = m2.id; rightId = m1.id;
+            } else {
+              [leftId, rightId] = [m1.id, spouseId].sort(); // stable fallback
+            }
+      
+            const key = `${leftId}|${rightId}`;
+            used.add(leftId); used.add(rightId);
+      
+            unitKeyToMembers[key] = [leftId, rightId];
+            personToUnitKey[leftId] = key;
+            personToUnitKey[rightId] = key;
           } else {
             const key = m.id;
             used.add(m.id);
